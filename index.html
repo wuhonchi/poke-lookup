@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>POKÉ / FIND — Pokémon TCG card search</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=JetBrains+Mono:wght@400;700&family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  body { background: #0a0a0a; font-family: 'Manrope', sans-serif; margin: 0; }
+  .display { font-family: 'Bowlby One', sans-serif; letter-spacing: -0.03em; line-height: 0.9; }
+  .mono    { font-family: 'JetBrains Mono', monospace; }
+  .grain   { background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.035) 1px, transparent 0); background-size: 22px 22px; }
+  .holo    { position: relative; overflow: hidden; }
+  .holo::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+    background: linear-gradient(115deg, transparent 30%, rgba(255,204,0,0.18) 45%, rgba(255,27,107,0.14) 55%, transparent 70%);
+    transition: opacity .3s;
+  }
+  .holo:hover::after { opacity: 1; }
+  .scrollbar-thin::-webkit-scrollbar { height: 6px; width: 6px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #444; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
+  .fadein { animation: fadein .3s ease-out both; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useRef } = React;
+
+// ────────── Inline SVG icons (replaces lucide-react so we don't need a build step)
+const Icon = ({ d, className = '' }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    {typeof d === 'string' ? <path d={d} /> : d}
+  </svg>
+);
+const IX = (p) => <Icon {...p} d="M18 6 6 18M6 6l12 12" />;
+const ILoader = (p) => <Icon {...p} d="M21 12a9 9 0 1 1-6.219-8.56" />;
+const IAlert  = (p) => <Icon {...p} d={<><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></>} />;
+const IOff    = (p) => <Icon {...p} d={<><line x1="2" y1="2" x2="22" y2="22"/><path d="M10.41 10.41 6 5l-4 4 5 5"/><path d="M22 12V5a2 2 0 0 0-2-2H8"/></>} />;
+const IExt    = (p) => <Icon {...p} d={<><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></>} />;
+const ILayers = (p) => <Icon {...p} d={<><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></>} />;
+const ISearch = (p) => <Icon {...p} d={<><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>} />;
+
+// ────────── Data
+// ────────── Categories: keyword aliases → list of dex IDs to fan out
+// Free-text searches that don't match a category fall through to ?name=<query>
+const CATEGORIES = [
+  {
+    label: 'Mice',
+    emoji: '🐭',
+    keywords: ['mouse', 'mice', 'rodent', 'rat', 'rats', '老鼠', '鼠', 'ねずみ', 'ネズミ'],
+    dexIds: [25, 26, 172, 19, 20, 311, 312, 417, 587, 702, 777, 877, 921, 922, 923],
+  },
+  {
+    label: 'Eeveelutions',
+    emoji: '🦊',
+    keywords: ['eevee', 'eeveelution', 'eeveelutions', 'eevees', 'イーブイ', '伊布'],
+    dexIds: [133, 134, 135, 136, 196, 197, 470, 471, 700],
+  },
+  {
+    label: 'Pikachu family',
+    emoji: '⚡',
+    keywords: ['pika', 'pikachu family', 'pichu line'],
+    dexIds: [25, 26, 172],
+  },
+  {
+    label: 'Kanto starters',
+    emoji: '🌱',
+    keywords: ['kanto starter', 'kanto starters', 'gen 1 starter', 'gen 1 starters', 'starter gen 1'],
+    dexIds: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+  },
+  {
+    label: 'Cats',
+    emoji: '🐱',
+    keywords: ['cat', 'cats', 'feline', 'kitten', 'kitty', '貓', '猫', 'ねこ'],
+    dexIds: [52, 53, 431, 432, 509, 510, 677, 678, 935, 936, 937],
+  },
+  {
+    label: 'Dogs',
+    emoji: '🐶',
+    keywords: ['dog', 'dogs', 'canine', 'puppy', '狗', '犬', 'いぬ'],
+    dexIds: [58, 59, 209, 210, 261, 262, 506, 507, 508, 835, 836],
+  },
+  {
+    label: 'Dragons',
+    emoji: '🐉',
+    keywords: ['dragon', 'dragons', 'wyrm', '龍', '龙', 'ドラゴン'],
+    dexIds: [147, 148, 149, 329, 330, 371, 372, 373, 380, 381, 443, 444, 445, 610, 611, 612, 633, 634, 635, 704, 705, 706, 776, 780, 887],
+  },
+  {
+    label: 'Pseudo-legendaries',
+    emoji: '💪',
+    keywords: ['pseudo legendary', 'pseudo legendaries', 'pseudo-legendary', 'pseudo'],
+    dexIds: [149, 248, 373, 376, 445, 635, 706, 784, 887, 998],
+  },
+  {
+    label: 'Kanto legendaries',
+    emoji: '⭐',
+    keywords: ['kanto legendary', 'kanto legendaries', 'legendary birds', 'legendary trio', 'gen 1 legendary'],
+    dexIds: [144, 145, 146, 150, 151],
+  },
+  {
+    label: 'Mythicals',
+    emoji: '✨',
+    keywords: ['mythical', 'mythicals', 'event pokemon'],
+    dexIds: [151, 251, 385, 386, 489, 490, 491, 492, 493, 494, 647, 648, 649, 719, 720, 721, 801, 802, 807, 808, 809, 893],
+  },
+  {
+    label: 'Fossils',
+    emoji: '🦴',
+    keywords: ['fossil', 'fossils', 'prehistoric', 'extinct'],
+    dexIds: [138, 139, 140, 141, 142, 345, 346, 347, 348, 408, 409, 410, 411, 564, 565, 566, 567, 696, 697, 698, 699, 880, 881, 882, 883],
+  },
+];
+
+// Returns the matched category, or null for free-text search
+function matchCategory(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return null;
+  for (const cat of CATEGORIES) {
+    for (const k of cat.keywords) {
+      const kl = k.toLowerCase();
+      if (kl === q || q === cat.label.toLowerCase()) return cat;
+    }
+  }
+  return null;
+}
+
+// ────────── dex # → English Pokémon name (covers all IDs used in CATEGORIES above)
+const DEX_TO_NAME = {
+  // Kanto
+  1:'Bulbasaur', 2:'Ivysaur', 3:'Venusaur',
+  4:'Charmander', 5:'Charmeleon', 6:'Charizard',
+  7:'Squirtle', 8:'Wartortle', 9:'Blastoise',
+  19:'Rattata', 20:'Raticate', 25:'Pikachu', 26:'Raichu',
+  52:'Meowth', 53:'Persian', 58:'Growlithe', 59:'Arcanine',
+  138:'Omanyte', 139:'Omastar', 140:'Kabuto', 141:'Kabutops', 142:'Aerodactyl',
+  144:'Articuno', 145:'Zapdos', 146:'Moltres',
+  147:'Dratini', 148:'Dragonair', 149:'Dragonite',
+  150:'Mewtwo', 151:'Mew',
+  // Johto
+  172:'Pichu', 209:'Snubbull', 210:'Granbull',
+  248:'Tyranitar', 251:'Celebi',
+  // Hoenn
+  261:'Poochyena', 262:'Mightyena',
+  311:'Plusle', 312:'Minun',
+  329:'Vibrava', 330:'Flygon',
+  345:'Lileep', 346:'Cradily', 347:'Anorith', 348:'Armaldo',
+  371:'Bagon', 372:'Shelgon', 373:'Salamence',
+  376:'Metagross', 380:'Latias', 381:'Latios', 384:'Rayquaza',
+  385:'Jirachi', 386:'Deoxys',
+  // Sinnoh
+  133:'Eevee', 134:'Vaporeon', 135:'Jolteon', 136:'Flareon',
+  196:'Espeon', 197:'Umbreon',
+  408:'Cranidos', 409:'Rampardos', 410:'Shieldon', 411:'Bastiodon',
+  417:'Pachirisu',
+  443:'Gible', 444:'Gabite', 445:'Garchomp',
+  470:'Leafeon', 471:'Glaceon',
+  489:'Phione', 490:'Manaphy', 491:'Darkrai', 492:'Shaymin', 493:'Arceus',
+  494:'Victini',
+  // Unova
+  506:'Lillipup', 507:'Herdier', 508:'Stoutland',
+  509:'Purrloin', 510:'Liepard',
+  564:'Tirtouga', 565:'Carracosta', 566:'Archen', 567:'Archeops',
+  587:'Emolga',
+  610:'Axew', 611:'Fraxure', 612:'Haxorus',
+  633:'Deino', 634:'Zweilous', 635:'Hydreigon',
+  647:'Keldeo', 648:'Meloetta', 649:'Genesect',
+  // Kalos
+  677:'Espurr', 678:'Meowstic',
+  696:'Tyrunt', 697:'Tyrantrum', 698:'Amaura', 699:'Aurorus',
+  700:'Sylveon', 702:'Dedenne',
+  704:'Goomy', 705:'Sliggoo', 706:'Goodra',
+  719:'Diancie', 720:'Hoopa', 721:'Volcanion',
+  // Alola
+  776:'Turtonator', 777:'Togedemaru', 780:'Drampa', 784:'Kommo-o',
+  801:'Magearna', 802:'Marshadow',
+  807:'Zeraora', 808:'Meltan', 809:'Melmetal',
+  // Galar
+  835:'Yamper', 836:'Boltund',
+  877:'Morpeko', 880:'Dracozolt', 881:'Arctozolt', 882:'Dracovish', 883:'Arctovish',
+  887:'Dragapult', 893:'Zarude',
+  // Paldea
+  921:'Pawmi', 922:'Pawmo', 923:'Pawmot',
+  935:'Sprigatito', 936:'Floragato', 937:'Meowscarada',
+  998:'Baxcalibur',
+};
+
+const LANGUAGES = [
+  { code: 'all',   label: 'ALL', name: 'All languages' },
+  { code: 'en',    label: 'EN',  name: 'English' },
+  { code: 'fr',    label: 'FR',  name: 'Français' },
+  { code: 'es',    label: 'ES',  name: 'Español' },
+  { code: 'de',    label: 'DE',  name: 'Deutsch' },
+  { code: 'it',    label: 'IT',  name: 'Italiano' },
+  { code: 'pt-br', label: 'PT',  name: 'Português' },
+  { code: 'ja',    label: '日',  name: '日本語' },
+  { code: 'zh-tw', label: '繁',  name: '繁體中文' },
+  { code: 'id',    label: 'ID',  name: 'Indonesia' },
+  { code: 'th',    label: 'TH',  name: 'ไทย' },
+];
+
+const LANG_REGEX = /\/(en|fr|es|de|it|pt-br|ja|zh-tw|id|th)\//;
+const swapLang = (url, toLang) => url ? url.replace(LANG_REGEX, `/${toLang}/`) : null;
+
+// ────────── Name aliases: localized name → English equivalent
+// TCGdex has card IMAGES in many languages, but the localized NAME fields are
+// often untranslated (especially for older sets in zh-tw / zh-cn / ko). So
+// searching `?name=噴火龍` against the zh-tw endpoint returns nothing even
+// though zh-tw Charizard images exist. This table lets us translate the user's
+// search term to English, query the EN endpoint, then synthesize the localized
+// variants via image URL swapping.
+const NAME_ALIASES = {
+  // — Kanto starters & Charizard family (the user's example case)
+  'フシギダネ': 'Bulbasaur', '妙蛙種子': 'Bulbasaur', '妙蛙种子': 'Bulbasaur',
+  'フシギソウ': 'Ivysaur',   '妙蛙草': 'Ivysaur',
+  'フシギバナ': 'Venusaur',  '妙蛙花': 'Venusaur',
+  'ヒトカゲ': 'Charmander',  '小火龍': 'Charmander',  '小火龙': 'Charmander',
+  'リザード': 'Charmeleon',  '火恐龍': 'Charmeleon',  '火恐龙': 'Charmeleon',
+  'リザードン': 'Charizard', '噴火龍': 'Charizard',   '喷火龙': 'Charizard',
+  'ゼニガメ': 'Squirtle',    '傑尼龜': 'Squirtle',    '杰尼龟': 'Squirtle',
+  'カメール': 'Wartortle',   '卡咪龜': 'Wartortle',   '卡咪龟': 'Wartortle',
+  'カメックス': 'Blastoise', '水箭龜': 'Blastoise',   '水箭龟': 'Blastoise',
+  // — Pikachu line
+  'ピチュー': 'Pichu',       '皮丘': 'Pichu',
+  'ピカチュウ': 'Pikachu',   '皮卡丘': 'Pikachu',
+  'ライチュウ': 'Raichu',    '雷丘': 'Raichu',
+  // — Eeveelutions
+  'イーブイ': 'Eevee',       '伊布': 'Eevee',
+  'シャワーズ': 'Vaporeon',  '水伊布': 'Vaporeon',
+  'サンダース': 'Jolteon',   '雷伊布': 'Jolteon',
+  'ブースター': 'Flareon',   '火伊布': 'Flareon',
+  'エーフィ': 'Espeon',      '太陽伊布': 'Espeon',    '太阳伊布': 'Espeon',
+  'ブラッキー': 'Umbreon',   '月亮伊布': 'Umbreon',
+  'リーフィア': 'Leafeon',   '葉伊布': 'Leafeon',     '叶伊布': 'Leafeon',
+  'グレイシア': 'Glaceon',   '冰伊布': 'Glaceon',
+  'ニンフィア': 'Sylveon',   '仙子伊布': 'Sylveon',
+  // — Legendary / mythical
+  'ミュウツー': 'Mewtwo',    '超夢': 'Mewtwo',        '超梦': 'Mewtwo',
+  'ミュウ': 'Mew',           '夢幻': 'Mew',           '梦幻': 'Mew',
+  'ルギア': 'Lugia',         '洛奇亞': 'Lugia',       '洛奇亚': 'Lugia',
+  'ホウオウ': 'Ho-Oh',       '鳳王': 'Ho-Oh',         '凤王': 'Ho-Oh',
+  'セレビィ': 'Celebi',      '時拉比': 'Celebi',      '时拉比': 'Celebi',
+  'ジラーチ': 'Jirachi',     '基拉祈': 'Jirachi',
+  'アルセウス': 'Arceus',    '阿爾宙斯': 'Arceus',    '阿尔宙斯': 'Arceus',
+  // — Popular fan favorites
+  'ガブリアス': 'Garchomp',  '烈咬陸鯊': 'Garchomp',  '烈咬陆鲨': 'Garchomp',
+  'メタモン': 'Ditto',       '百變怪': 'Ditto',       '百变怪': 'Ditto',
+  'ゲンガー': 'Gengar',      '耿鬼': 'Gengar',
+  'ヤドラン': 'Slowbro',     '呆殼獸': 'Slowbro',     '呆壳兽': 'Slowbro',
+  'カビゴン': 'Snorlax',     '卡比獸': 'Snorlax',     '卡比兽': 'Snorlax',
+  'ラプラス': 'Lapras',      '拉普拉斯': 'Lapras',
+  'ルカリオ': 'Lucario',     '路卡利歐': 'Lucario',   '路卡利欧': 'Lucario',
+  'ミミッキュ': 'Mimikyu',   '謎擬Q': 'Mimikyu',      '谜拟Q': 'Mimikyu',
+  'ドラパルト': 'Dragapult', '多龍巴魯托': 'Dragapult', '多龙巴鲁托': 'Dragapult',
+};
+
+// Resolve a search term to its English equivalent (case-sensitive lookup first
+// for CJK, then case-insensitive for Latin scripts). Returns null if no alias.
+function resolveAlias(query) {
+  if (!query) return null;
+  if (NAME_ALIASES[query]) return NAME_ALIASES[query];
+  const lower = query.toLowerCase();
+  for (const [k, v] of Object.entries(NAME_ALIASES)) {
+    if (k.toLowerCase() === lower) return v;
+  }
+  return null;
+}
+
+
+function MouseIndex() {
+  const [lang, setLang] = useState('all');
+  const [searchInput, setSearchInput] = useState('mouse');
+  const [debouncedQuery, setDebouncedQuery] = useState('mouse');
+  const [cards, setCards] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [modalCard, setModalCard] = useState(null);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const reqId = useRef(0);
+
+  // Debounce input → only trigger fetch 300ms after user stops typing
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(searchInput), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // Interpret query: category match (synonym-aware) or free-text fallback
+  const interpretation = useMemo(() => {
+    const q = debouncedQuery.trim();
+    if (!q) return null;
+    const cat = matchCategory(q);
+    if (cat) return { type: 'category', cat };
+    // Localized name → English equivalent (e.g. 噴火龍 → Charizard)
+    const alias = resolveAlias(q);
+    return { type: 'free', query: q, alias };
+  }, [debouncedQuery]);
+
+  useEffect(() => {
+    if (!interpretation) {
+      setCards([]);
+      setLoading(false);
+      setErrorMsg('');
+      return;
+    }
+
+    const myReq = ++reqId.current;
+    setLoading(true);
+    setCards([]);
+    setErrorMsg('');
+
+    (async () => {
+      const seen = new Set();
+      const all = [];
+      const errors = [];
+
+      if (interpretation.type === 'free') {
+        // Build the list of search terms — original query + English alias if
+        // user typed a localized name like 噴火龍.
+        const terms = [interpretation.query];
+        if (interpretation.alias && interpretation.alias.toLowerCase() !== interpretation.query.toLowerCase()) {
+          terms.push(interpretation.alias);
+        }
+
+        if (lang === 'all') {
+          const allLangCodes = LANGUAGES.filter(l => l.code !== 'all').map(l => l.code);
+          // (lang × term) combinations
+          const queries = allLangCodes.flatMap(lng => terms.map(term => ({ lng, term })));
+          setProgress({ done: 0, total: queries.length });
+          let pdone = 0;
+
+          const fetched = await Promise.all(queries.map(async ({ lng, term }) => {
+            const url = `https://api.tcgdex.net/v2/${lng}/cards?name=${encodeURIComponent(term)}`;
+            try {
+              const res = await fetch(url);
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const data = await res.json();
+              return { lng, term, cards: Array.isArray(data) ? data : [] };
+            } catch (e) {
+              errors.push(`${lng}/${term}: ${e?.message || e}`);
+              return { lng, term, cards: [] };
+            } finally {
+              pdone++;
+              if (myReq === reqId.current) setProgress({ done: pdone, total: queries.length });
+            }
+          }));
+
+          if (myReq !== reqId.current) return;
+
+          // base card per ID (prefer EN data when available)
+          const baseById = new Map();
+          for (const { lng, cards } of fetched) {
+            for (const c of cards) {
+              if (!c?.id) continue;
+              if (!baseById.has(c.id) || lng === 'en') baseById.set(c.id, c);
+            }
+          }
+          // direct API match per (id, lang)
+          const directMatches = new Map();
+          for (const { lng, cards } of fetched) {
+            for (const c of cards) {
+              if (c?.id) directMatches.set(`${c.id}__${lng}`, c);
+            }
+          }
+
+          // Synthesize tiles: one per (id × lang) combination
+          const tiles = [];
+          for (const [id, base] of baseById) {
+            for (const lng of allLangCodes) {
+              const direct = directMatches.get(`${id}__${lng}`);
+              if (direct) {
+                tiles.push({
+                  ...direct,
+                  _tileKey: `${id}__${lng}`,
+                  _tileLang: lng,
+                  _synthesized: false,
+                });
+              } else if (base.image) {
+                tiles.push({
+                  ...base,
+                  _tileKey: `${id}__${lng}`,
+                  _tileLang: lng,
+                  _synthesized: true,
+                  image: swapLang(base.image, lng),
+                });
+              }
+            }
+          }
+          console.log(`[ALL "${interpretation.query}"] ${baseById.size} unique cards → ${tiles.length} tile candidates across ${allLangCodes.length} languages`);
+          setCards(tiles);
+        } else {
+          // Specific language mode: query EN + that language, with both
+          // original and alias terms.
+          const langsToQuery = lang === 'en' ? ['en'] : ['en', lang];
+          const queries = langsToQuery.flatMap(lng => terms.map(term => ({ lng, term })));
+          setProgress({ done: 0, total: queries.length });
+          let pdone = 0;
+
+          const results = await Promise.all(queries.map(async ({ lng, term }) => {
+            const url = `https://api.tcgdex.net/v2/${lng}/cards?name=${encodeURIComponent(term)}`;
+            try {
+              const res = await fetch(url);
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const data = await res.json();
+              return { lng, term, data: Array.isArray(data) ? data : [] };
+            } catch (e) {
+              errors.push(`${lng}/${term}: ${e?.message || e}`);
+              return { lng, term, data: [] };
+            } finally {
+              pdone++;
+              if (myReq === reqId.current) setProgress({ done: pdone, total: queries.length });
+            }
+          }));
+
+          if (myReq !== reqId.current) return;
+
+          // Merge: EN results first (image-swapped), then localized overwrites
+          const byId = new Map();
+          for (const { lng, data } of results.filter(r => r.lng === 'en')) {
+            for (const c of data) {
+              if (!c?.id) continue;
+              const image = c.image && lang !== 'en' ? swapLang(c.image, lang) : c.image;
+              if (!byId.has(c.id)) byId.set(c.id, { ...c, image, _tileLang: lang });
+            }
+          }
+          for (const { lng, data } of results.filter(r => r.lng !== 'en')) {
+            for (const c of data) {
+              if (!c?.id) continue;
+              byId.set(c.id, { ...c, _tileLang: lang });
+            }
+          }
+
+          const merged = Array.from(byId.values());
+          console.log(`[free "${interpretation.query}"${interpretation.alias ? ` + "${interpretation.alias}"` : ''}] +${merged.length} cards (display: ${lang})`);
+          setCards(merged);
+        }
+      } else {
+        // Category: fan out one EN request per dex ID, dedupe results.
+        // We always query the EN endpoint because Pokémon names like "Pikachu"
+        // are universal English; localized endpoints (e.g. JA) wouldn't match.
+        // For display, we swap image URLs to the user's selected language.
+        const cat = interpretation.cat;
+        setProgress({ done: 0, total: cat.dexIds.length });
+        let done = 0;
+
+        const tasks = cat.dexIds.map(async (id) => {
+          const name = DEX_TO_NAME[id];
+          if (!name) {
+            done++;
+            setProgress({ done, total: cat.dexIds.length });
+            return;
+          }
+          const url = `https://api.tcgdex.net/v2/en/cards?name=${encodeURIComponent(name)}`;
+          try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            if (myReq !== reqId.current) return;
+            const arr = Array.isArray(data) ? data : [];
+            console.log(`[${name} #${id}] +${arr.length} cards`);
+            for (const c of arr) {
+              if (!c?.id) continue;
+              if (lang === 'all') {
+                // Generate one variant tile per language (broken images get hidden)
+                const allLangCodes = LANGUAGES.filter(l => l.code !== 'all').map(l => l.code);
+                for (const lng of allLangCodes) {
+                  const tileKey = `${c.id}__${lng}`;
+                  if (seen.has(tileKey)) continue;
+                  seen.add(tileKey);
+                  all.push({
+                    ...c,
+                    _tileKey: tileKey,
+                    _tileLang: lng,
+                    _synthesized: lng !== 'en',
+                    _dexId: id,
+                    image: lng === 'en' ? c.image : (c.image ? swapLang(c.image, lng) : null),
+                  });
+                }
+              } else if (!seen.has(c.id)) {
+                seen.add(c.id);
+                const image = c.image && lang !== 'en' ? swapLang(c.image, lang) : c.image;
+                all.push({ ...c, image, _tileLang: lang, _dexId: id });
+              }
+            }
+            setCards([...all]);
+          } catch (e) {
+            console.warn(`[${name}] failed:`, e);
+            errors.push(`${name}: ${e?.message || e}`);
+          } finally {
+            done++;
+            if (myReq === reqId.current) {
+              setProgress({ done, total: cat.dexIds.length });
+            }
+          }
+        });
+        await Promise.allSettled(tasks);
+      }
+
+      if (myReq === reqId.current) {
+        if (errors.length) setErrorMsg(errors.slice(0, 5).join(' · ') + (errors.length > 5 ? ` +${errors.length - 5} more` : ''));
+        setLoading(false);
+      }
+    })();
+  }, [lang, interpretation]);
+
+  const cardsWithImage = useMemo(() => cards.filter(c => c.image), [cards]);
+  const missingImages = cards.length - cardsWithImage.length;
+  const langName = LANGUAGES.find(l => l.code === lang)?.name || lang;
+
+  return (
+    <div className="min-h-screen bg-[#0a0a0a] text-zinc-100">
+      {/* HEADER */}
+      <header className="sticky top-0 z-30 border-b border-zinc-900 bg-[#0a0a0a]/85 backdrop-blur-md">
+        <div className="max-w-[1400px] mx-auto px-4 md:px-6 py-4 md:py-5">
+          <div className="flex items-end justify-between gap-4 flex-wrap">
+            <div>
+              <h1 className="display text-3xl md:text-5xl text-[#FFCC00]">
+                POKÉ<span className="text-white mx-0.5">/</span>FIND
+              </h1>
+              <p className="mono text-[10px] md:text-xs text-zinc-500 uppercase mt-1.5" style={{letterSpacing: '0.2em'}}>
+                Pokémon TCG card search · 10 languages · powered by tcgdex.net
+              </p>
+            </div>
+            <a href="https://tcgdex.dev" target="_blank" rel="noopener noreferrer"
+               className="mono text-[10px] text-zinc-500 hover:text-[#FFCC00] flex items-center gap-1 transition">
+              tcgdex.dev <IExt className="w-3 h-3" />
+            </a>
+          </div>
+
+          <div className="mt-4 flex items-center gap-1.5 flex-wrap">
+            <span className="mono text-[10px] text-zinc-500 uppercase mr-1" style={{letterSpacing:'0.15em'}}>Lang →</span>
+            {LANGUAGES.map(l => (
+              <button key={l.code} onClick={() => setLang(l.code)} title={l.name}
+                className={`mono text-[11px] px-2.5 py-1 rounded-sm border transition ${
+                  lang === l.code
+                    ? 'border-[#FFCC00] bg-[#FFCC00] text-black font-bold'
+                    : 'border-zinc-800 text-zinc-500 hover:border-zinc-600 hover:text-zinc-200'
+                }`}>
+                {l.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </header>
+
+      {/* SEARCH */}
+      <div className="border-b border-zinc-900 grain">
+        <div className="max-w-[1400px] mx-auto px-4 md:px-6 py-4">
+          <div className="relative">
+            <ISearch className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none" />
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Try: Charizard, リザードン, 噴火龍, mouse, eevee, dragon…"
+              className="w-full bg-zinc-950 border border-zinc-800 focus:border-[#FFCC00] outline-none rounded-md pl-10 pr-10 py-3 text-sm text-zinc-100 placeholder-zinc-600 transition mono"
+              autoFocus
+            />
+            {searchInput && (
+              <button
+                onClick={() => setSearchInput('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-100 transition"
+                aria-label="Clear search"
+              >
+                <IX className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* QUICK CATEGORY CHIPS */}
+          <div className="mt-3 flex items-center gap-1.5 overflow-x-auto scrollbar-thin pb-1 -mx-1 px-1">
+            <span className="mono text-[10px] text-zinc-500 uppercase mr-1 shrink-0" style={{letterSpacing:'0.15em'}}>Quick →</span>
+            {CATEGORIES.map(cat => {
+              const active = matchCategory(debouncedQuery)?.label === cat.label;
+              return (
+                <button
+                  key={cat.label}
+                  onClick={() => setSearchInput(cat.keywords[0])}
+                  className={`shrink-0 mono text-[11px] px-3 py-1.5 rounded-full border transition whitespace-nowrap flex items-center gap-1.5 ${
+                    active
+                      ? 'bg-[#FF1B6B] border-[#FF1B6B] text-white font-bold'
+                      : 'border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-zinc-100'
+                  }`}
+                >
+                  <span>{cat.emoji}</span>
+                  <span>{cat.label}</span>
+                  <span className={active ? 'text-white/70' : 'text-zinc-600'}>· {cat.dexIds.length}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* STATUS */}
+      <div className="max-w-[1400px] mx-auto px-4 md:px-6 py-3">
+        <div className="mono text-[11px] text-zinc-500">
+          {loading ? (
+            <span className="flex items-center gap-2">
+              <ILoader className="w-3 h-3 animate-spin text-[#FFCC00]" />
+              fetching {progress.done}/{progress.total} · {cardsWithImage.length} cards
+            </span>
+          ) : (
+            <span>
+              <span className="text-[#FFCC00] font-bold">{cardsWithImage.length}</span> {lang === 'all' ? 'tile candidates' : 'cards'}
+              {missingImages > 0 && <span className="text-zinc-700"> · {missingImages} no image</span>}
+              <span className="text-zinc-700"> · {langName}</span>
+              {lang === 'all' && (
+                <span className="text-zinc-700"> · all language variants shown; missing ones auto-hide</span>
+              )}
+              {lang !== 'all' && lang !== 'en' && (
+                <span className="text-zinc-700"> · cards without {langName} version are hidden</span>
+              )}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {errorMsg && (
+        <div className="max-w-[1400px] mx-auto px-4 md:px-6 mb-2">
+          <div className="mono text-[11px] text-rose-300 bg-rose-950/40 border border-rose-900 rounded-md px-3 py-2 flex items-start gap-2">
+            <IAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <div className="break-all">
+              <div className="font-bold mb-0.5">Fetch failed</div>
+              <div className="text-rose-400/80">{errorMsg}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GRID */}
+      <main className="max-w-[1400px] mx-auto px-4 md:px-6 pb-20">
+        {cardsWithImage.length === 0 && !loading ? (
+          <div className="text-center py-24 mono text-zinc-600 fadein">
+            <IOff className="w-10 h-10 mx-auto mb-3 opacity-30" />
+            {!debouncedQuery.trim() ? (
+              <>
+                <p className="text-sm">Type something to start searching.</p>
+                <p className="text-xs mt-1 text-zinc-700">Try a category, a Pokémon name, or any keyword.</p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm">No cards found for "<span className="text-zinc-400">{debouncedQuery}</span>" in <span className="text-zinc-400">{langName}</span>.</p>
+                <p className="text-xs mt-1 text-zinc-700">Try a different word or another language.</p>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4">
+            {cardsWithImage.map(card => (
+              <CardTile
+                key={card._tileKey || card.id}
+                card={card}
+                hideOnError={lang !== 'all' || card._synthesized}
+                onClick={() => setModalCard(card)}
+              />
+            ))}
+          </div>
+        )}
+      </main>
+
+      {modalCard && (
+        <CardModal card={modalCard} currentLang={lang} onClose={() => setModalCard(null)} />
+      )}
+
+      <footer className="border-t border-zinc-900">
+        <div className="max-w-[1400px] mx-auto px-4 md:px-6 py-5 mono text-[10px] text-zinc-600 flex flex-wrap gap-3 items-center justify-between">
+          <span>Data & images: <a href="https://tcgdex.dev" target="_blank" rel="noopener noreferrer" className="text-zinc-500 hover:text-[#FFCC00] underline underline-offset-2">tcgdex.net</a></span>
+          <span className="text-zinc-700">Pokémon ™ Nintendo · Creatures · GAME FREAK</span>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function CardTile({ card, onClick, hideOnError }) {
+  const [errored, setErrored] = useState(false);
+  const lowImg  = `${card.image}/low.webp`;
+  const highImg = `${card.image}/high.webp`;
+  if (errored && hideOnError) return null;
+  return (
+    <button onClick={onClick}
+      className="holo text-left bg-zinc-950 rounded-md overflow-hidden border border-zinc-900 hover:border-[#FFCC00]/40 hover:-translate-y-0.5 transition fadein relative">
+      {card._tileLang && (
+        <div className="absolute top-1.5 right-1.5 z-10 mono text-[8px] font-bold px-1.5 py-0.5 rounded-sm bg-black/80 backdrop-blur-sm text-[#FFCC00] border border-zinc-700/50 uppercase" style={{letterSpacing:'0.1em'}}>
+          {card._tileLang}
+        </div>
+      )}
+      <div className="aspect-[245/337] relative bg-zinc-900">
+        {!errored ? (
+          <img src={lowImg} srcSet={`${lowImg} 1x, ${highImg} 2x`} alt={card.name} loading="lazy"
+            onError={() => setErrored(true)} className="w-full h-full object-contain" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-zinc-700"><IOff className="w-6 h-6" /></div>
+        )}
+      </div>
+      <div className="px-2.5 py-2 border-t border-zinc-900">
+        <div className="text-xs font-bold truncate text-zinc-100">{card.name}</div>
+        <div className="mono text-[9px] text-zinc-600 mt-0.5 truncate uppercase" style={{letterSpacing:'0.1em'}}>{card.id}</div>
+      </div>
+    </button>
+  );
+}
+
+function CardModal({ card, currentLang, onClose }) {
+  // Open modal in the language of the clicked tile (if it's a ALL-mode variant),
+  // otherwise the user's selected display language, defaulting to EN for ALL.
+  const initialLang = card._tileLang || (currentLang === 'all' ? 'en' : currentLang);
+  const [activeLang, setActiveLang] = useState(initialLang);
+  const activeImage = swapLang(card.image, activeLang);
+  const highImg = `${activeImage}/high.png`;
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 bg-black/95 backdrop-blur-sm z-50 overflow-y-auto fadein" onClick={onClose}>
+      <button onClick={onClose}
+        className="fixed top-3 right-3 md:top-4 md:right-4 w-10 h-10 rounded-full bg-zinc-900 border border-zinc-700 hover:border-white hover:bg-zinc-800 flex items-center justify-center transition z-10">
+        <IX className="w-5 h-5" />
+      </button>
+      <div className="min-h-screen flex items-start md:items-center justify-center p-4 md:p-8" onClick={(e) => e.stopPropagation()}>
+        <div className="max-w-5xl w-full grid md:grid-cols-[auto_1fr] gap-6 md:gap-10 items-start py-12 md:py-0">
+          <div className="mx-auto">
+            <img key={activeImage} src={highImg} alt={card.name}
+              className="max-h-[70vh] md:max-h-[80vh] w-auto rounded-2xl shadow-2xl fadein"
+              style={{ filter: 'drop-shadow(0 25px 60px rgba(255,204,0,0.18))' }}
+              onError={(e) => { e.currentTarget.style.opacity = '0.3'; }} />
+          </div>
+          <div className="text-zinc-200 max-w-md">
+            <div className="mono text-[10px] text-zinc-500 uppercase mb-2 flex items-center gap-2" style={{letterSpacing:'0.2em'}}>
+              <span className="px-1.5 py-0.5 bg-[#FFCC00] text-black font-bold rounded-sm">{activeLang.toUpperCase()}</span>
+              <span>{card.id}</span>
+            </div>
+            <h2 className="display text-3xl md:text-5xl mb-1 text-white">{card.name}</h2>
+            <p className="mono text-xs text-zinc-500 uppercase mb-6" style={{letterSpacing:'0.15em'}}>local id · {card.localId}</p>
+
+            <div className="mb-6">
+              <div className="mono text-[10px] text-zinc-500 uppercase mb-2 flex items-center gap-1.5" style={{letterSpacing:'0.15em'}}>
+                <ILayers className="w-3 h-3" /> view in other languages
+              </div>
+              <div className="grid grid-cols-5 gap-1.5">
+                {LANGUAGES.filter(l => l.code !== 'all').map(l => (
+                  <LangThumb key={l.code} lang={l} imageUrl={swapLang(card.image, l.code)}
+                    active={activeLang === l.code} onClick={() => setActiveLang(l.code)} />
+                ))}
+              </div>
+              <p className="mono text-[10px] text-zinc-600 mt-2">Faded thumbs = card not released in that language</p>
+            </div>
+
+            <div className="mb-6">
+              <div className="mono text-[10px] text-zinc-500 uppercase mb-2" style={{letterSpacing:'0.15em'}}>Direct image URLs</div>
+              <div className="flex gap-1.5 flex-wrap">
+                <UrlPill href={`${activeImage}/high.webp`} label="high·webp" sub="600×825" />
+                <UrlPill href={`${activeImage}/high.png`}  label="high·png"  sub="600×825" />
+                <UrlPill href={`${activeImage}/low.webp`}  label="low·webp"  sub="245×337" />
+              </div>
+            </div>
+
+            <div className="mono text-[10px] text-zinc-600 leading-relaxed border-t border-zinc-900 pt-3">
+              <code className="break-all text-zinc-500">{activeImage}/high.webp</code>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LangThumb({ lang, imageUrl, active, onClick }) {
+  const [errored, setErrored] = useState(false);
+  return (
+    <button onClick={onClick} title={lang.name}
+      className={`relative aspect-[245/337] rounded-sm overflow-hidden border-2 transition ${
+        active ? 'border-[#FFCC00]' : 'border-zinc-900 hover:border-zinc-600'
+      }`}>
+      {!errored ? (
+        <img src={`${imageUrl}/low.webp`} alt={lang.name} loading="lazy"
+          onError={() => setErrored(true)}
+          className={`w-full h-full object-cover transition ${active ? '' : 'opacity-70'}`} />
+      ) : (
+        <div className="w-full h-full bg-zinc-900 flex items-center justify-center opacity-30"><IOff className="w-3 h-3" /></div>
+      )}
+      <div className={`absolute bottom-0 inset-x-0 mono text-[8px] text-center py-0.5 font-bold ${
+        active ? 'bg-[#FFCC00] text-black' : 'bg-black/70 text-zinc-400'
+      }`}>{lang.label}</div>
+    </button>
+  );
+}
+
+function UrlPill({ href, label, sub }) {
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer"
+      className="mono text-[10px] px-2.5 py-1.5 border border-zinc-800 hover:border-[#FFCC00] hover:text-[#FFCC00] rounded-sm transition flex flex-col items-start">
+      <span className="font-bold">{label}</span>
+      <span className="text-zinc-600 text-[9px]">{sub}</span>
+    </a>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<MouseIndex />);
+</script>
+</body>
+</html>
