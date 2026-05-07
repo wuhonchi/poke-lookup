@@ -3,3 +3,4 @@ HANDOFF.md
 .env
 .env.*
 node_modules/
+aliases.json
