@@ -35,7 +35,7 @@
 <div id="root"></div>
 
 <script type="text/babel" data-presets="react">
-const { useState, useEffect, useMemo, useRef } = React;
+const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
 // ────────── Inline SVG icons (replaces lucide-react so we don't need a build step)
 const Icon = ({ d, className = '' }) => (
@@ -5721,7 +5721,17 @@ function MouseIndex() {
   const [errorMsg, setErrorMsg] = useState('');
   const [modalCard, setModalCard] = useState(null);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [failedKeys, setFailedKeys] = useState(() => new Set());
   const reqId = useRef(0);
+  const markFailed = useCallback((key) => {
+    if (!key) return;
+    setFailedKeys(prev => {
+      if (prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+  }, []);
 
   // Debounce input → only trigger fetch 300ms after user stops typing
   useEffect(() => {
@@ -5752,6 +5762,7 @@ function MouseIndex() {
     setLoading(true);
     setCards([]);
     setErrorMsg('');
+    setFailedKeys(new Set());
 
     (async () => {
       const seen = new Set();
@@ -5949,6 +5960,10 @@ function MouseIndex() {
 
   const cardsWithImage = useMemo(() => cards.filter(c => c.image), [cards]);
   const missingImages = cards.length - cardsWithImage.length;
+  const visibleCount = useMemo(
+    () => cardsWithImage.reduce((n, c) => n + (failedKeys.has(c._tileKey || c.id) ? 0 : 1), 0),
+    [cardsWithImage, failedKeys]
+  );
   const langName = LANGUAGES.find(l => l.code === lang)?.name || lang;
 
   return (
@@ -6013,7 +6028,7 @@ function MouseIndex() {
 
           {/* QUICK CATEGORY CHIPS */}
           <div className="mt-3 flex items-center gap-1.5 overflow-x-auto scrollbar-thin pb-1 -mx-1 px-1">
-            <span className="mono text-[10px] text-zinc-500 uppercase mr-1 shrink-0" style={{letterSpacing:'0.15em'}}>Quick →</span>
+            <span className="mono text-[10px] text-zinc-500 uppercase mr-1 shrink-0" style={{letterSpacing:'0.15em'}}>Common →</span>
             {CATEGORIES.map(cat => {
               const active = matchCategory(debouncedQuery)?.label === cat.label;
               return (
@@ -6042,11 +6057,14 @@ function MouseIndex() {
           {loading ? (
             <span className="flex items-center gap-2">
               <ILoader className="w-3 h-3 animate-spin text-[#FFCC00]" />
-              fetching {progress.done}/{progress.total} · {cardsWithImage.length} cards
+              fetching {progress.done}/{progress.total} · <span className="text-[#FFCC00] font-bold">{visibleCount}</span> visible / {cardsWithImage.length} candidates
             </span>
           ) : (
             <span>
-              <span className="text-[#FFCC00] font-bold">{cardsWithImage.length}</span> {lang === 'all' ? 'tile candidates' : 'cards'}
+              <span className="text-[#FFCC00] font-bold">{visibleCount}</span> visible
+              {cardsWithImage.length !== visibleCount && (
+                <span className="text-zinc-700"> / {cardsWithImage.length} candidate{cardsWithImage.length === 1 ? '' : 's'}</span>
+              )}
               {missingImages > 0 && <span className="text-zinc-700"> · {missingImages} no image</span>}
               <span className="text-zinc-700"> · {langName}</span>
               {lang === 'all' && (
@@ -6096,6 +6114,7 @@ function MouseIndex() {
                 key={card._tileKey || card.id}
                 card={card}
                 hideOnError={lang !== 'all' || card._synthesized}
+                onError={() => markFailed(card._tileKey || card.id)}
                 onClick={() => setModalCard(card)}
               />
             ))}
@@ -6117,7 +6136,7 @@ function MouseIndex() {
   );
 }
 
-function CardTile({ card, onClick, hideOnError }) {
+function CardTile({ card, onClick, hideOnError, onError }) {
   const [errored, setErrored] = useState(false);
   const lowImg  = `${card.image}/low.webp`;
   const highImg = `${card.image}/high.webp`;
@@ -6133,7 +6152,7 @@ function CardTile({ card, onClick, hideOnError }) {
       <div className="aspect-[245/337] relative bg-zinc-900">
         {!errored ? (
           <img src={lowImg} srcSet={`${lowImg} 1x, ${highImg} 2x`} alt={card.name} loading="lazy"
-            onError={() => setErrored(true)} className="w-full h-full object-contain" />
+            onError={() => { setErrored(true); onError && onError(); }} className="w-full h-full object-contain" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-zinc-700"><IOff className="w-6 h-6" /></div>
         )}
