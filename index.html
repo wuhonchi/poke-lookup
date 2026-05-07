@@ -56,6 +56,12 @@ const ISearch = (p) => <Icon {...p} d={<><circle cx="11" cy="11" r="8"/><line x1
 // Free-text searches that don't match a category fall through to ?name=<query>
 const CATEGORIES = [
   {
+    label: 'Iconic 151',
+    emoji: '🌟',
+    keywords: ['iconic', 'iconic 151', 'common 151', 'famous', 'popular', 'classic', 'gen 1 popular'],
+    dexIds: [25, 6, 150, 151, 133, 143, 1, 4, 7, 39, 52, 54, 94, 131, 132, 129, 130, 149, 144, 145, 146],
+  },
+  {
     label: 'Mice',
     emoji: '🐭',
     keywords: ['mouse', 'mice', 'rodent', 'rat', 'rats', '老鼠', '鼠', 'ねずみ', 'ネズミ'],
@@ -194,6 +200,9 @@ const DEX_TO_NAME = {
   921:'Pawmi', 922:'Pawmo', 923:'Pawmot',
   935:'Sprigatito', 936:'Floragato', 937:'Meowscarada',
   998:'Baxcalibur',
+  // Iconic 151 missing
+  39:'Jigglypuff', 54:'Psyduck', 94:'Gengar', 129:'Magikarp', 130:'Gyarados',
+  131:'Lapras', 132:'Ditto', 143:'Snorlax',
 };
 
 const LANGUAGES = [
