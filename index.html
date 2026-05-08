@@ -7023,22 +7023,30 @@ function MouseIndex() {
   }, [lang, interpretation, jpCards, tcCards]);
 
   // Sort newest-first using whichever signal is available for the card's source.
-  // - JP (PTCG-DB): jp_id sequential, higher = newer
-  // - TC (PTCG-DB): trailing tw00xxxxx number from image URL
-  // - EN (TCGdex):  EN_SET_DATES[card.set.id] release date as timestamp
+  // - JP (PTCG-DB): set release date (JP_SET_INFO) primary, jp_id fallback
+  // - TC (PTCG-DB): set release date (TC_SET_INFO) primary, image URL ID fallback
+  // - EN (TCGdex):  EN_SET_DATES[setId] release date — setId derived from card.id when set object is missing
   const cardsWithImage = useMemo(() => {
     const filtered = cards.filter(c => c.image);
+    const tsOf = (date) => date ? Date.parse(date) / 1000 : 0;
     const keyOf = (c) => {
-      if (c._tileLang === 'ja' && typeof c.id === 'string' && c.id.startsWith('jp-')) {
-        return Number(c.id.slice(3)) || 0;
+      // Resolve set code: prefer card.set.id, fall back to prefix of card.id (e.g. "swsh3-25" -> "swsh3")
+      const setId = c.set?.id || (typeof c.id === 'string' && c.id.includes('-') ? c.id.split('-')[0] : null);
+      if (c._tileLang === 'ja') {
+        const ts = tsOf(JP_SET_INFO[setId]?.date);
+        if (ts) return ts;
+        // Fallback: jp_id from id like "jp-46659"
+        if (typeof c.id === 'string' && c.id.startsWith('jp-')) return Number(c.id.slice(3)) || 0;
+        return 0;
       }
       if (c._tileLang === 'zh-tw') {
+        const ts = tsOf(TC_SET_INFO[setId]?.date);
+        if (ts) return ts;
         const m = (c.image || '').match(/tw0*(\d+)/);
         return m ? Number(m[1]) : 0;
       }
-      const setId = c.set?.id;
-      const date = setId && EN_SET_DATES[setId];
-      return date ? Date.parse(date) / 1000 : 0;
+      // EN / TCGdex
+      return tsOf(EN_SET_DATES[setId]);
     };
     return [...filtered].sort((a, b) => keyOf(b) - keyOf(a));
   }, [cards]);
@@ -7230,7 +7238,8 @@ function CardTile({ card, onClick, hideOnError, onError }) {
   const highImg = card._fullUrl ? card.image : `${card.image}/high.webp`;
   if (errored && hideOnError) return null;
   // Resolve set + release date for the user-facing line under the card name.
-  const sid = card.set?.id;
+  // Fallback to deriving setId from card.id (TCGdex list endpoint omits set object).
+  const sid = card.set?.id || (typeof card.id === 'string' && card.id.includes('-') ? card.id.split('-')[0] : null);
   const meta = card._tileLang === 'ja'    ? JP_SET_INFO[sid]
             : card._tileLang === 'zh-tw' ? TC_SET_INFO[sid]
             : { name: card.set?.name, date: EN_SET_DATES[sid] };
@@ -7307,7 +7316,7 @@ function CardModal({ card, currentLang, onClose }) {
             <h2 className="display text-3xl md:text-5xl mb-1 text-white">{card.name}</h2>
             <p className="mono text-xs text-zinc-500 uppercase mb-3" style={{letterSpacing:'0.15em'}}>local id · {card.localId}</p>
             {(() => {
-              const sid = card.set?.id;
+              const sid = card.set?.id || (typeof card.id === 'string' && card.id.includes('-') ? card.id.split('-')[0] : null);
               const meta = card._tileLang === 'ja'    ? JP_SET_INFO[sid]
                         : card._tileLang === 'zh-tw' ? TC_SET_INFO[sid]
                         : { name: card.set?.name, date: EN_SET_DATES[sid] };
