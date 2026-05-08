@@ -15,26 +15,43 @@ async function* walkJson(dir) {
   }
 }
 
-const cards = [];
-let count = 0;
+// Dedup by image URL (TC scraper has ~915 duplicates from multi-pass crawls).
+// Prefer entries from "real" set folders (alphabetic codes) over weird ones with .png in path.
+const seen = new Map(); // img -> card
+let count = 0, dupes = 0;
+function setQuality(setName) {
+  // Higher = better. Prefer clean set codes over weird ones with .png/space/etc.
+  if (!setName) return 0;
+  if (/\.png/i.test(setName)) return 1;
+  if (/^\s/.test(setName)) return 2;
+  return 3;
+}
 for await (const file of walkJson(SRC)) {
   try {
     const c = JSON.parse(await fs.readFile(file, 'utf8'));
     if (!c.img || !c.name) continue;
-    cards.push({
+    const entry = {
       name: c.name,
       img: c.img,
       set: c.set_name || '',
       number: c.number || '',
       url: c.url || '',
-    });
+    };
+    const prev = seen.get(c.img);
+    if (!prev || setQuality(entry.set) > setQuality(prev.set)) {
+      if (prev) dupes++;
+      seen.set(c.img, entry);
+    } else {
+      dupes++;
+    }
     count++;
     if (count % 5000 === 0) process.stdout.write(`\r  processed ${count}`);
   } catch {
     // skip broken file
   }
 }
-process.stdout.write(`\r  processed ${count}\n`);
+const cards = Array.from(seen.values());
+process.stdout.write(`\r  processed ${count}, deduped ${dupes}\n`);
 
 await fs.writeFile(OUT, JSON.stringify(cards));
 const stat = await fs.stat(OUT);

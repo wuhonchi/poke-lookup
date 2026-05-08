@@ -15,13 +15,15 @@ async function* walkJson(dir) {
   }
 }
 
-const cards = [];
-let count = 0;
+// Dedup by image URL (defensive — JP normally has only ~6 dupes).
+const seen = new Map();
+let count = 0, dupes = 0;
 for await (const file of walkJson(SRC)) {
   try {
     const c = JSON.parse(await fs.readFile(file, 'utf8'));
     if (!c.img || !c.name) continue;
-    cards.push({
+    if (seen.has(c.img)) { dupes++; count++; continue; }
+    seen.set(c.img, {
       name: c.name,
       img: c.img,
       set: c.set_name || '',
@@ -34,7 +36,8 @@ for await (const file of walkJson(SRC)) {
     // skip broken file
   }
 }
-process.stdout.write(`\r  processed ${count}\n`);
+const cards = Array.from(seen.values());
+process.stdout.write(`\r  processed ${count}, deduped ${dupes}\n`);
 
 await fs.writeFile(OUT, JSON.stringify(cards));
 const stat = await fs.stat(OUT);
