@@ -4,3 +4,4 @@ HANDOFF.md
 .env.*
 node_modules/
 aliases.json
+pokemon_names.json
