@@ -159,15 +159,8 @@ const DEX_TO_NAME = {
 const LANGUAGES = [
   { code: 'all',   label: 'ALL', name: 'All languages' },
   { code: 'en',    label: 'EN',  name: 'English' },
-  { code: 'fr',    label: 'FR',  name: 'Français' },
-  { code: 'es',    label: 'ES',  name: 'Español' },
-  { code: 'de',    label: 'DE',  name: 'Deutsch' },
-  { code: 'it',    label: 'IT',  name: 'Italiano' },
-  { code: 'pt-br', label: 'PT',  name: 'Português' },
   { code: 'ja',    label: '日',  name: '日本語' },
   { code: 'zh-tw', label: '繁',  name: '繁體中文' },
-  { code: 'id',    label: 'ID',  name: 'Indonesia' },
-  { code: 'th',    label: 'TH',  name: 'ไทย' },
 ];
 
 const LANG_REGEX = /\/(en|fr|es|de|it|pt-br|ja|zh-tw|id|th)\//;
@@ -6714,15 +6707,22 @@ function MouseIndex() {
   const [failedKeys, setFailedKeys] = useState(() => new Set());
   const [jpCards, setJpCards] = useState(null);
   const [jpLoadError, setJpLoadError] = useState('');
+  const [tcCards, setTcCards] = useState(null);
+  const [tcLoadError, setTcLoadError] = useState('');
   const reqId = useRef(0);
 
-  // Lazy-load local JP card index (~3.5 MB) on first mount; only used when lang === 'ja'.
+  // Lazy-load local card indexes from PTCG-database. Loaded once on mount.
+  // JP ~3.5 MB, TC ~2.1 MB. Only used when lang matches.
   useEffect(() => {
     let cancelled = false;
     fetch('cards_jp.json')
       .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
       .then(data => { if (!cancelled) setJpCards(data); })
       .catch(e => { if (!cancelled) setJpLoadError(String(e)); });
+    fetch('cards_tc.json')
+      .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
+      .then(data => { if (!cancelled) setTcCards(data); })
+      .catch(e => { if (!cancelled) setTcLoadError(String(e)); });
     return () => { cancelled = true; };
   }, []);
 
@@ -6767,49 +6767,55 @@ function MouseIndex() {
     setErrorMsg('');
     setFailedKeys(new Set());
 
-    // ── JP single-language path: search local PTCG-database index instead of TCGdex ──
-    if (lang === 'ja' && jpCards) {
-      // Build candidate JP names to substring-match against:
-      //   1. The user's raw input (handles partial JP input like "リザ")
-      //   2. The Pokemon's official ja-Hrkt name from POKEMON_NAMES (looked up via alias / category)
+    // ── JP / TC single-language path: search local PTCG-database index instead of TCGdex ──
+    const localSpec = lang === 'ja'
+      ? { dataset: jpCards, error: jpLoadError, langKey: 'ja-hrkt', tileLang: 'ja',    keyPrefix: 'jp', label: 'JP' }
+      : lang === 'zh-tw'
+      ? { dataset: tcCards, error: tcLoadError, langKey: 'zh-hant', tileLang: 'zh-tw', keyPrefix: 'tc', label: 'TC' }
+      : null;
+    if (localSpec) {
+      if (!localSpec.dataset) {
+        if (localSpec.error) {
+          setErrorMsg(`${localSpec.label} index failed to load: ${localSpec.error}`);
+          setLoading(false);
+        }
+        return;
+      }
+      // Build native-name search terms:
+      //   1. Raw user input (handles partial native input like "リザ" / "噴火")
+      //   2. The Pokemon's official native name looked up via alias / category
       const terms = new Set();
       if (interpretation.type === 'category') {
         for (const id of interpretation.cat.dexIds) {
           const en = DEX_TO_NAME[id];
-          const ja = en && POKEMON_NAMES[en]?.['ja-hrkt'];
-          if (ja) terms.add(ja);
+          const native = en && POKEMON_NAMES[en]?.[localSpec.langKey];
+          if (native) terms.add(native);
         }
       } else {
         const q = interpretation.query.trim();
         if (q) terms.add(q);
         const en = interpretation.alias || (POKEMON_NAMES[q] ? q : null);
-        const ja = en && POKEMON_NAMES[en]?.['ja-hrkt'];
-        if (ja) terms.add(ja);
+        const native = en && POKEMON_NAMES[en]?.[localSpec.langKey];
+        if (native) terms.add(native);
       }
       const termArr = [...terms];
-      const matches = jpCards.filter(c => termArr.some(t => c.name.includes(t)));
-      const tiles = matches.map(c => ({
-        id: `jp-${c.jp_id ?? c.set + '-' + c.number}`,
-        name: c.name,
-        image: c.img,
-        set: { id: c.set, name: c.set },
-        localId: c.number,
-        _tileLang: 'ja',
-        _fullUrl: true,
-        _tileKey: `jp-${c.jp_id ?? c.set + '-' + c.number}`,
-      }));
-      console.log(`[JP local] terms=${JSON.stringify(termArr)} → ${tiles.length} matches`);
+      const matches = localSpec.dataset.filter(c => termArr.some(t => c.name.includes(t)));
+      const tiles = matches.map((c, i) => {
+        const k = `${localSpec.keyPrefix}-${c.jp_id ?? `${c.set}-${c.number}-${i}`}`;
+        return {
+          id: k,
+          name: c.name,
+          image: c.img,
+          set: { id: c.set, name: c.set },
+          localId: c.number,
+          _tileLang: localSpec.tileLang,
+          _fullUrl: true,
+          _tileKey: k,
+        };
+      });
+      console.log(`[${localSpec.label} local] terms=${JSON.stringify(termArr)} → ${tiles.length} matches`);
       setCards(tiles);
       setLoading(false);
-      return;
-    }
-    if (lang === 'ja' && !jpCards) {
-      // JP index not loaded yet — show "loading" state but don't hit TCGdex.
-      // The lazy-load effect will trigger this re-run when jpCards arrives.
-      if (jpLoadError) {
-        setErrorMsg(`JP index failed to load: ${jpLoadError}`);
-        setLoading(false);
-      }
       return;
     }
 
@@ -7005,7 +7011,7 @@ function MouseIndex() {
         setLoading(false);
       }
     })();
-  }, [lang, interpretation, jpCards]);
+  }, [lang, interpretation, jpCards, tcCards]);
 
   const cardsWithImage = useMemo(() => cards.filter(c => c.image), [cards]);
   const missingImages = cards.length - cardsWithImage.length;
@@ -7105,10 +7111,12 @@ function MouseIndex() {
           {loading ? (
             <span className="flex items-center gap-2">
               <ILoader className="w-3 h-3 animate-spin text-[#FFCC00]" />
-              {lang === 'ja' && !jpCards
+              {(lang === 'ja' && !jpCards)
                 ? (jpLoadError ? `JP index load failed: ${jpLoadError}` : 'loading JP index (~3.5 MB)…')
+                : (lang === 'zh-tw' && !tcCards)
+                ? (tcLoadError ? `TC index load failed: ${tcLoadError}` : 'loading TC index (~2.1 MB)…')
                 : `fetching ${progress.done}/${progress.total} · `}
-              {(!(lang === 'ja' && !jpCards)) && (<><span className="text-[#FFCC00] font-bold">{visibleCount}</span> visible / {cardsWithImage.length} candidates</>)}
+              {(!((lang === 'ja' && !jpCards) || (lang === 'zh-tw' && !tcCards))) && (<><span className="text-[#FFCC00] font-bold">{visibleCount}</span> visible / {cardsWithImage.length} candidates</>)}
             </span>
           ) : (
             <span>
