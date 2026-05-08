@@ -5,3 +5,5 @@ HANDOFF.md
 node_modules/
 aliases.json
 pokemon_names.json
+jp_set_info.json
+tc_set_info.json
