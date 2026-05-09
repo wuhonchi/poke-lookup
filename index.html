@@ -6718,10 +6718,12 @@ function MouseIndex() {
   const [jpLoadError, setJpLoadError] = useState('');
   const [tcCards, setTcCards] = useState(null);
   const [tcLoadError, setTcLoadError] = useState('');
+  const [jpPrices, setJpPrices] = useState(null);
   const reqId = useRef(0);
 
   // Lazy-load local card indexes from PTCG-database. Loaded once on mount.
   // JP ~3.5 MB, TC ~2.1 MB. Only used when lang matches.
+  // Also load Yahoo Auctions JP price snapshot (~few MB) — soft-fail (file may not exist yet during build).
   useEffect(() => {
     let cancelled = false;
     fetch('cards_jp.json')
@@ -6732,6 +6734,10 @@ function MouseIndex() {
       .then(r => r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`))
       .then(data => { if (!cancelled) setTcCards(data); })
       .catch(e => { if (!cancelled) setTcLoadError(String(e)); });
+    fetch('prices_jp.json')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (!cancelled && data) setJpPrices(data); })
+      .catch(() => {});  // silently ignore — file may not exist during build phase
     return () => { cancelled = true; };
   }, []);
 
@@ -7211,6 +7217,7 @@ function MouseIndex() {
                 hideOnError={lang !== 'all' || card._synthesized}
                 onError={() => markFailed(card._tileKey || card.id)}
                 onClick={() => setModalCard(card)}
+                priceData={card._tileLang === 'ja' && jpPrices ? jpPrices[`${card.set?.id}-${card.localId}`] : null}
               />
             ))}
           </div>
@@ -7231,7 +7238,7 @@ function MouseIndex() {
   );
 }
 
-function CardTile({ card, onClick, hideOnError, onError }) {
+function CardTile({ card, onClick, hideOnError, onError, priceData }) {
   const [errored, setErrored] = useState(false);
   // PTCG-database images are full URLs ending in .jpg/.png; TCGdex are base URLs needing /low.webp suffix
   const lowImg  = card._fullUrl ? card.image : `${card.image}/low.webp`;
@@ -7261,13 +7268,21 @@ function CardTile({ card, onClick, hideOnError, onError }) {
           <div className="w-full h-full flex items-center justify-center text-zinc-700"><IOff className="w-6 h-6" /></div>
         )}
       </div>
-      <div className="px-2.5 py-2 border-t border-zinc-900">
-        <div className="text-xs font-bold truncate text-zinc-100">{card.name}</div>
-        {(setName || date) && (
+      <div className="px-2.5 py-2 border-t border-zinc-900 flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-bold truncate text-zinc-100">{card.name}</div>
           <div className="mono text-[9px] text-zinc-500 mt-0.5 truncate" style={{letterSpacing:'0.05em'}}>
-            {setName && <span>{setName}</span>}
-            {setName && date && <span className="text-zinc-700"> · </span>}
-            {date && <span className="text-zinc-600">{date}</span>}
+            {date || setName || '—'}
+          </div>
+        </div>
+        {priceData && (
+          <div className="text-right shrink-0 mono">
+            <div className="text-[10px] text-[#FFCC00] font-bold tabular-nums">
+              {priceData.raw?.avgRecent ? `¥${priceData.raw.avgRecent.toLocaleString()}` : <span className="text-zinc-700">—</span>}
+            </div>
+            <div className="text-[9px] text-zinc-400 tabular-nums mt-0.5">
+              {priceData.psa10?.avgRecent ? `PSA10 ¥${priceData.psa10.avgRecent.toLocaleString()}` : <span className="text-zinc-700">PSA10 —</span>}
+            </div>
           </div>
         )}
       </div>
