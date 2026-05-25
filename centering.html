@@ -15,8 +15,8 @@
   .canvas-wrap { position: relative; background: #1a1a1a; border: 1px solid #222; border-radius: 8px; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
   canvas.image-canvas { display: block; max-width: 100%; }
   canvas.overlay-canvas { position: absolute; top: 0; left: 0; touch-action: none; cursor: crosshair; }
-  .minimap-wrap { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.25); border-radius: 6px; padding: 4px; backdrop-filter: blur(4px); }
-  canvas.minimap-canvas { display: block; cursor: crosshair; touch-action: none; }
+  .minimap-wrap-inline { background: #111; border: 1px solid #222; border-radius: 8px; padding: 8px; display: inline-block; }
+  canvas.minimap-canvas { display: block; cursor: crosshair; touch-action: none; max-width: 100%; }
   .stat { background: #111; padding: 10px 12px; border-radius: 8px; border: 1px solid #222; }
   .btn { padding: 7px 12px; border-radius: 6px; font-weight: 600; font-size: 13px; transition: background .15s; white-space: nowrap; }
   .btn-primary { background: #2563eb; }
@@ -73,15 +73,16 @@
       <div class="canvas-wrap" id="canvas-wrap">
         <canvas id="img-canvas" class="image-canvas" width="800" height="450"></canvas>
         <canvas id="overlay-canvas" class="overlay-canvas" width="800" height="450"></canvas>
-        <div class="minimap-wrap" id="minimap-wrap" style="display:none;">
-          <canvas id="minimap-canvas" class="minimap-canvas" width="110" height="150"></canvas>
-        </div>
         <div id="empty-state" class="absolute inset-0 flex items-center justify-center text-gray-600 text-sm pointer-events-none p-4 text-center">
           Upload a photo to begin.
         </div>
       </div>
       <div class="text-[10px] text-gray-500 mt-1.5 lg:hidden">
         Tap handle to select. Pinch to zoom. Drag empty area to pan. Use ⟳ to rotate.
+      </div>
+      <div id="minimap-wrap" class="minimap-wrap-inline mt-2" style="display:none;">
+        <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Navigator</div>
+        <canvas id="minimap-canvas" class="minimap-canvas" width="220" height="300"></canvas>
       </div>
     </div>
 
@@ -143,9 +144,10 @@
 
   const CARD_MM_W = 63, CARD_MM_H = 88;
   const TW = 630, TH = 880;
-  const DISPLAY_MAX = 1800;
+  const DISPLAY_MAX = 2400;
   const PROC_MAX = 800;
   const MIN_ZOOM = 0.5, MAX_ZOOM = 16;
+  const DPR = window.devicePixelRatio || 1;
 
   const state = {
     cv: null,
@@ -249,12 +251,17 @@
     if (ch > maxH) { ch = maxH; cw = ch * aspect; }
     state.canvasW = Math.round(cw);
     state.canvasH = Math.round(ch);
-    imgCanvas.width = state.canvasW;
-    imgCanvas.height = state.canvasH;
-    overlayCanvas.width = state.canvasW;
-    overlayCanvas.height = state.canvasH;
+    // DPR-aware: internal buffer at device pixels, CSS size at logical pixels.
+    imgCanvas.width = state.canvasW * DPR;
+    imgCanvas.height = state.canvasH * DPR;
+    imgCanvas.style.width = state.canvasW + 'px';
+    imgCanvas.style.height = state.canvasH + 'px';
+    overlayCanvas.width = state.canvasW * DPR;
+    overlayCanvas.height = state.canvasH * DPR;
     overlayCanvas.style.width = state.canvasW + 'px';
     overlayCanvas.style.height = state.canvasH + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    octx.setTransform(DPR, 0, 0, DPR, 0, 0);
     v.baseScale = state.canvasW / v.rotW;
   }
 
@@ -372,10 +379,20 @@
   // ─────────────────────────────────────────────────────────────
   // Minimap
   // ─────────────────────────────────────────────────────────────
+  const MM_CSS_W = 220, MM_CSS_H = 300;
+  function initMinimap() {
+    minimapCanvas.width = MM_CSS_W * DPR;
+    minimapCanvas.height = MM_CSS_H * DPR;
+    minimapCanvas.style.width = MM_CSS_W + 'px';
+    minimapCanvas.style.height = MM_CSS_H + 'px';
+    mctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  initMinimap();
+
   function drawMinimap() {
     if (!state.view.rotatedSrc) return;
     const v = state.view;
-    const mw = minimapCanvas.width, mh = minimapCanvas.height;
+    const mw = MM_CSS_W, mh = MM_CSS_H;
     const aspect = v.rotW / v.rotH;
     let drawW = mw, drawH = mw / aspect;
     if (drawH > mh) { drawH = mh; drawW = mh * aspect; }
@@ -672,28 +689,31 @@
         w = Math.round(w * r);
         h = Math.round(h * r);
       }
+      // Decode into an offscreen canvas at target resolution. No JPEG round-trip
+      // — we keep the canvas itself as the image source for drawImage() so we
+      // preserve full fidelity (was previously lossy via toDataURL('image/jpeg', 0.92)).
       const off = document.createElement('canvas');
       off.width = w; off.height = h;
-      off.getContext('2d').drawImage(bmp, 0, 0, w, h);
-      const img = new Image();
-      img.onload = () => {
-        state.img = img;
-        state.imgW = w;
-        state.imgH = h;
-        state.view.rot = 0;
-        state.view.zoom = 1;
-        state.view.offsetX = 0;
-        state.view.offsetY = 0;
-        buildRotatedSource();
-        fitCanvas();
-        resetHandles();
-        recomputeScale();
-        scheduleDraw();
-        minimapWrap.style.display = '';
-        $('empty-state').style.display = 'none';
-        setStatus('Ready. Drag handles. Pinch / wheel to zoom.');
-      };
-      img.src = off.toDataURL('image/jpeg', 0.92);
+      const offCtx = off.getContext('2d');
+      offCtx.imageSmoothingEnabled = true;
+      offCtx.imageSmoothingQuality = 'high';
+      offCtx.drawImage(bmp, 0, 0, w, h);
+      bmp.close && bmp.close();
+      state.img = off;       // CanvasImageSource — drawImage() accepts it directly
+      state.imgW = w;
+      state.imgH = h;
+      state.view.rot = 0;
+      state.view.zoom = 1;
+      state.view.offsetX = 0;
+      state.view.offsetY = 0;
+      buildRotatedSource();
+      fitCanvas();
+      resetHandles();
+      recomputeScale();
+      scheduleDraw();
+      minimapWrap.style.display = '';
+      $('empty-state').style.display = 'none';
+      setStatus('Ready. Drag handles. Pinch / wheel to zoom.');
     } catch (err) {
       setStatus('Failed to load image: ' + err.message);
     }
@@ -910,17 +930,20 @@
   }
 
   function renderWarp(innerWarped) {
-    const cw = warpCanvas.clientWidth || 200;
-    const ch = cw * (TH / TW);
-    if (warpCanvas.width !== Math.round(cw) || warpCanvas.height !== Math.round(ch)) {
-      warpCanvas.width = Math.round(cw); warpCanvas.height = Math.round(ch);
+    const cssW = Math.round(warpCanvas.clientWidth || 200);
+    const cssH = Math.round(cssW * (TH / TW));
+    if (warpCanvas.width !== cssW * DPR || warpCanvas.height !== cssH * DPR) {
+      warpCanvas.width = cssW * DPR;
+      warpCanvas.height = cssH * DPR;
+      warpCanvas.style.height = cssH + 'px';
+      wctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     }
-    const s = warpCanvas.width / TW;
+    const s = cssW / TW;
     wctx.fillStyle = '#0a0a0a';
-    wctx.fillRect(0, 0, warpCanvas.width, warpCanvas.height);
+    wctx.fillRect(0, 0, cssW, cssH);
     wctx.strokeStyle = '#22d3ee';
     wctx.lineWidth = 2;
-    wctx.strokeRect(1, 1, warpCanvas.width - 2, warpCanvas.height - 2);
+    wctx.strokeRect(1, 1, cssW - 2, cssH - 2);
     wctx.beginPath();
     innerWarped.forEach((p, i) => {
       if (i === 0) wctx.moveTo(p.x * s, p.y * s);
