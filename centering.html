@@ -41,8 +41,9 @@
     <div>
       <h1 class="display text-2xl lg:text-4xl">POKÉ / CENTER</h1>
       <p class="text-xs lg:text-sm text-gray-400 mt-1 max-w-3xl">
-        Upload a near-top-down photo. Drag <span class="text-cyan-400 font-semibold">cyan</span> = outer card edge,
-        <span class="text-yellow-400 font-semibold">yellow</span> = inner frame edge.
+        Upload a near-top-down photo. Drag <span class="text-cyan-400 font-semibold">cyan</span> to the
+        <span class="font-semibold">physical card edge</span>, drag <span class="text-yellow-400 font-semibold">yellow</span> to the
+        <span class="font-semibold">artwork-start boundary</span> (where colored border meets central art — not the outer edge of the colored band).
         <span class="hidden lg:inline">Pinch / wheel = zoom. Drag empty area = pan. Arrow keys nudge selected handle 1 px (Shift = 10 px).</span>
         <span class="lg:hidden">Pinch to zoom. Drag empty area to pan.</span>
       </p>
@@ -92,11 +93,13 @@
           <div class="text-[10px] text-gray-500 uppercase tracking-wider">Left / Right</div>
           <div class="mono text-2xl font-bold" id="lr">— / —</div>
           <div class="text-[11px] text-gray-500 mono" id="lr-mm">— / — mm</div>
+          <div class="text-[11px] text-gray-600 mono mt-1">Σ L+R: <span id="lr-sum">—</span> mm</div>
         </div>
         <div class="stat">
           <div class="text-[10px] text-gray-500 uppercase tracking-wider">Top / Bottom</div>
           <div class="mono text-2xl font-bold" id="tb">— / —</div>
           <div class="text-[11px] text-gray-500 mono" id="tb-mm">— / — mm</div>
+          <div class="text-[11px] text-gray-600 mono mt-1">Σ T+B: <span id="tb-sum">—</span> mm</div>
         </div>
       </div>
 
@@ -114,6 +117,40 @@
         <div class="text-[11px] text-gray-500 mt-2">Outer = card boundary after perspective correction. Yellow = inner-frame markers warped into rectified space.</div>
       </div>
 
+      <div class="stat">
+        <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Handle placement guide</div>
+        <svg viewBox="0 0 220 140" class="w-full" xmlns="http://www.w3.org/2000/svg">
+          <!-- card body -->
+          <rect x="55" y="15" width="110" height="110" rx="6" fill="#2a2a1a" stroke="#22d3ee" stroke-width="1.5"/>
+          <!-- colored border band -->
+          <rect x="63" y="23" width="94" height="94" rx="3" fill="#3a3a20" stroke="#666" stroke-width="0.5"/>
+          <!-- inner artwork area -->
+          <rect x="72" y="32" width="76" height="76" fill="#1a3a2a" stroke="#facc15" stroke-width="1.5"/>
+          <text x="110" y="73" text-anchor="middle" fill="#888" font-size="8" font-family="monospace">artwork</text>
+          <!-- callout: physical edge -->
+          <line x1="55" y1="15" x2="20" y2="8" stroke="#22d3ee" stroke-width="0.7"/>
+          <circle cx="55" cy="15" r="2" fill="#22d3ee"/>
+          <text x="18" y="6" text-anchor="end" fill="#22d3ee" font-size="8" font-family="monospace">CYAN</text>
+          <text x="18" y="14" text-anchor="end" fill="#22d3ee" font-size="7" font-family="monospace">physical card edge</text>
+          <!-- callout: artwork start -->
+          <line x1="72" y1="32" x2="20" y2="58" stroke="#facc15" stroke-width="0.7"/>
+          <circle cx="72" cy="32" r="2" fill="#facc15"/>
+          <text x="18" y="56" text-anchor="end" fill="#facc15" font-size="8" font-family="monospace">YELLOW</text>
+          <text x="18" y="64" text-anchor="end" fill="#facc15" font-size="7" font-family="monospace">where art begins</text>
+          <!-- callout: colored band (do NOT use outer edge) -->
+          <line x1="63" y1="23" x2="200" y2="14" stroke="#888" stroke-width="0.7" stroke-dasharray="2,2"/>
+          <circle cx="63" cy="23" r="1.8" fill="#888"/>
+          <text x="202" y="13" fill="#888" font-size="7" font-family="monospace">colored band</text>
+          <text x="202" y="22" fill="#f87171" font-size="6.5" font-family="monospace">(don't snap here)</text>
+        </svg>
+        <div class="text-[10px] text-gray-500 mt-2 leading-relaxed">
+          The colored frame has <span class="text-gray-300">two visible edges</span>. Place
+          <span class="text-yellow-400 font-semibold">yellow</span> at the
+          <span class="text-yellow-400">inner</span> one — where the central artwork actually starts —
+          not the outer edge of the colored band.
+        </div>
+      </div>
+
       <details class="text-xs text-gray-400 stat">
         <summary class="text-gray-300 font-semibold">PSA centering thresholds</summary>
         <ul class="list-disc pl-4 mt-2 space-y-1">
@@ -127,11 +164,12 @@
       <details class="text-xs text-gray-400 stat">
         <summary class="text-gray-300 font-semibold">Tips & caveats</summary>
         <ul class="list-disc pl-4 mt-2 space-y-1">
-          <li>Outer = physical card edge. Inner = inner colored frame edge (yellow/holo border).</li>
+          <li><strong>Cyan</strong> = physical card edge. <strong>Yellow</strong> = where the central artwork begins (inner edge of the colored band).</li>
+          <li>If Σ L+R or Σ T+B looks far from your caliper-measured total, your handle placement (most likely yellow) is biased — re-check.</li>
           <li>Full-art / V / ex / SAR cards often lack a clear inner frame — centering becomes ambiguous.</li>
-          <li>Card is assumed flat. Bent cards will give wrong mm offsets.</li>
+          <li>Card is assumed flat. Bent cards give wrong mm offsets.</li>
           <li>Card dimensions assumed 63 × 88 mm.</li>
-          <li>Best capture: dark matte background, no flash, even diffused light, phone parallel to card, full card with margin, sleeves removed.</li>
+          <li>Best capture: dark matte background, no flash, even diffused light, phone parallel to card, full card with margin, sleeves removed, use main lens not ultra-wide.</li>
         </ul>
       </details>
     </aside>
@@ -904,18 +942,22 @@
 
     const lrSum = L + R, tbSum = T + B;
     if (lrSum <= 0 || tbSum <= 0) { setStatus('Inner quad outside outer — adjust handles.'); return; }
-    const lPct = Math.round(L / lrSum * 100), rPct = 100 - lPct;
-    const tPct = Math.round(T / tbSum * 100), bPct = 100 - tPct;
+    // Raw (unrounded) ratios for grade decision; rounded for UI only.
+    const lFrac = L / lrSum, tFrac = T / tbSum;
+    const lPct = Math.round(lFrac * 100), rPct = 100 - lPct;
+    const tPct = Math.round(tFrac * 100), bPct = 100 - tPct;
     $('lr').textContent = `${lPct} / ${rPct}`;
     $('tb').textContent = `${tPct} / ${bPct}`;
-    const lmm = (L * CARD_MM_W / TW).toFixed(2);
-    const rmm = (R * CARD_MM_W / TW).toFixed(2);
-    const tmm = (T * CARD_MM_H / TH).toFixed(2);
-    const bmm = (B * CARD_MM_H / TH).toFixed(2);
-    $('lr-mm').textContent = `${lmm} / ${rmm} mm`;
-    $('tb-mm').textContent = `${tmm} / ${bmm} mm`;
+    const lmmN = L * CARD_MM_W / TW, rmmN = R * CARD_MM_W / TW;
+    const tmmN = T * CARD_MM_H / TH, bmmN = B * CARD_MM_H / TH;
+    $('lr-mm').textContent = `${lmmN.toFixed(2)} / ${rmmN.toFixed(2)} mm`;
+    $('tb-mm').textContent = `${tmmN.toFixed(2)} / ${bmmN.toFixed(2)} mm`;
+    $('lr-sum').textContent = (lmmN + rmmN).toFixed(2);
+    $('tb-sum').textContent = (tmmN + bmmN).toFixed(2);
 
-    const worst = Math.max(Math.abs(lPct - 50), Math.abs(tPct - 50));
+    // Grade decision uses raw unrounded ratios so borderline cards
+    // (e.g. 54.6/45.4) aren't misclassified by Math.round.
+    const worst = Math.max(Math.abs(lFrac - 0.5), Math.abs(tFrac - 0.5)) * 100;
     let label, cls;
     if      (worst <=  5) { label = 'Gem Mint 10 (centering)'; cls = 'grade-10'; }
     else if (worst <= 10) { label = 'Mint 9 (centering)';      cls = 'grade-9'; }
