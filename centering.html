@@ -199,6 +199,7 @@
   const API_DOWNSCALE_MAX = 1024;
 
   const state = {
+    detectedPts: null,   // last Roboflow detection points (in source image coords) — for debug overlay
     img: null,
     imgW: 0, imgH: 0,
     canvasW: 0, canvasH: 0,
@@ -375,12 +376,28 @@
       0, 0, state.canvasW, state.canvasH);
 
     octx.clearRect(0, 0, state.canvasW, state.canvasH);
+    if (state.detectedPts) drawDetectionDots(state.detectedPts);
     drawQuad(state.outer, '#22d3ee');
     drawQuad(state.inner, '#facc15');
     drawHandles(state.outer, '#22d3ee', 'outer');
     drawHandles(state.inner, '#facc15', 'inner');
 
     drawMinimap();
+  }
+
+  // Draw Roboflow polygon points as faint dots so user can see exactly
+  // what was detected. If dots cluster on the card → detection is sane.
+  // If they're scattered → corner placement will be off; use manual.
+  function drawDetectionDots(pts) {
+    octx.save();
+    octx.fillStyle = 'rgba(192, 132, 252, 0.55)';
+    pts.forEach(p => {
+      const cp = imageToCanvas(p);
+      octx.beginPath();
+      octx.arc(cp.x, cp.y, 1.5, 0, Math.PI * 2);
+      octx.fill();
+    });
+    octx.restore();
   }
 
   function drawQuad(pts, color) {
@@ -747,6 +764,7 @@
       state.img = off;       // CanvasImageSource — drawImage() accepts it directly
       state.imgW = w;
       state.imgH = h;
+      state.detectedPts = null;  // clear stale detection from previous image
       state.view.rot = 0;
       state.view.zoom = 1;
       state.view.offsetX = 0;
@@ -844,9 +862,69 @@
     });
     if (allPts.length < 4) return null;
 
-    // Pick 4 extreme corners and scale API coords → source image coords.
-    const corners = orderCorners(allPts);
+    // Spatial clustering: the workflow returns many small polygon
+    // fragments along edges. If a second card / background object is in
+    // the photo, its fragments form a separate cluster from the main
+    // card's. Pick the largest cluster only — drops noise / second-card.
+    const imgMax = Math.max(pw, ph);
+    const clusterDist = Math.max(40, imgMax * 0.06);
+    const dominant = largestCluster(allPts, clusterDist);
+
+    // Store for debug overlay (scaled back to source image coords).
+    state.detectedPts = dominant.map(p => ({ x: p.x / r, y: p.y / r }));
+
+    if (dominant.length < 4) return null;
+    const corners = orderCorners(dominant);
     return corners.map(p => ({ x: p.x / r, y: p.y / r }));
+  }
+
+  // Union-Find clustering. Two points are connected if within `dist`.
+  // Returns the largest connected component. Uses spatial bins so the
+  // pairing check is O(n) instead of O(n²).
+  function largestCluster(pts, dist) {
+    const n = pts.length;
+    if (n === 0) return [];
+    const parent = new Array(n);
+    for (let i = 0; i < n; i++) parent[i] = i;
+    const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+    const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb; };
+
+    const bins = new Map();
+    const binKey = (bx, by) => bx + ',' + by;
+    for (let i = 0; i < n; i++) {
+      const bx = Math.floor(pts[i].x / dist);
+      const by = Math.floor(pts[i].y / dist);
+      const k = binKey(bx, by);
+      let arr = bins.get(k);
+      if (!arr) { arr = []; bins.set(k, arr); }
+      arr.push(i);
+    }
+
+    const d2 = dist * dist;
+    for (let i = 0; i < n; i++) {
+      const px = pts[i].x, py = pts[i].y;
+      const bx = Math.floor(px / dist), by = Math.floor(py / dist);
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const arr = bins.get(binKey(bx + dx, by + dy));
+          if (!arr) continue;
+          for (const j of arr) {
+            if (j <= i) continue;
+            const ddx = pts[j].x - px, ddy = pts[j].y - py;
+            if (ddx * ddx + ddy * ddy <= d2) union(i, j);
+          }
+        }
+      }
+    }
+
+    const counts = new Map();
+    for (let i = 0; i < n; i++) {
+      const r = find(i);
+      counts.set(r, (counts.get(r) || 0) + 1);
+    }
+    let bestRoot = -1, bestCount = 0;
+    counts.forEach((c, r) => { if (c > bestCount) { bestCount = c; bestRoot = r; } });
+    return pts.filter((_, i) => find(i) === bestRoot);
   }
 
   function orderCorners(pts) {
