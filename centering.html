@@ -2,21 +2,23 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
 <title>POKÉ / CENTER — Centering analyzer</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=JetBrains+Mono:wght@400;700&family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
 <style>
-  body { background: #0a0a0a; color: #eee; font-family: 'Manrope', system-ui, sans-serif; margin: 0; }
+  body { background: #0a0a0a; color: #eee; font-family: 'Manrope', system-ui, sans-serif; margin: 0; overscroll-behavior: none; }
   .display { font-family: 'Bowlby One', sans-serif; letter-spacing: -0.03em; }
   .mono { font-family: 'JetBrains Mono', monospace; }
-  .canvas-wrap { position: relative; background: #1a1a1a; border: 1px solid #222; border-radius: 8px; overflow: hidden; touch-action: none; }
+  .canvas-wrap { position: relative; background: #1a1a1a; border: 1px solid #222; border-radius: 8px; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
   canvas.image-canvas { display: block; max-width: 100%; }
   canvas.overlay-canvas { position: absolute; top: 0; left: 0; touch-action: none; cursor: crosshair; }
+  .minimap-wrap { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.25); border-radius: 6px; padding: 4px; backdrop-filter: blur(4px); }
+  canvas.minimap-canvas { display: block; cursor: crosshair; touch-action: none; }
   .stat { background: #111; padding: 10px 12px; border-radius: 8px; border: 1px solid #222; }
-  .btn { padding: 8px 14px; border-radius: 6px; font-weight: 600; transition: background .15s; }
+  .btn { padding: 7px 12px; border-radius: 6px; font-weight: 600; font-size: 13px; transition: background .15s; white-space: nowrap; }
   .btn-primary { background: #2563eb; }
   .btn-primary:hover { background: #1d4ed8; }
   .btn-secondary { background: #262626; border: 1px solid #333; }
@@ -29,48 +31,57 @@
   .grade-7  { background: #3f1006; color: #fb923c; border: 1px solid #9a3412; }
   .grade-low{ background: #3f0a14; color: #f87171; border: 1px solid #991b1b; }
   details > summary { cursor: pointer; user-select: none; }
+  .zoom-badge { background: rgba(0,0,0,0.6); border: 1px solid #333; padding: 4px 8px; border-radius: 4px; font-size: 11px; }
 </style>
 </head>
 <body class="min-h-screen">
 
-<div class="max-w-7xl mx-auto p-4 lg:p-6">
-  <header class="mb-5 flex items-start justify-between gap-4">
+<div class="max-w-7xl mx-auto p-3 lg:p-6">
+  <header class="mb-4 flex items-start justify-between gap-4">
     <div>
-      <h1 class="display text-3xl lg:text-4xl">POKÉ / CENTER</h1>
-      <p class="text-sm text-gray-400 mt-1 max-w-3xl">
-        Upload a near-top-down photo of a Pokémon card. Drag the
-        <span class="text-cyan-400 font-semibold">cyan</span> handles to fit the physical card edge,
-        and the <span class="text-yellow-400 font-semibold">yellow</span> handles to fit the inner frame edge.
-        Click a handle to select; use <span class="mono text-gray-300">Arrow keys</span> for 1 px nudge,
-        <span class="mono text-gray-300">Shift+Arrow</span> for 10 px, <span class="mono text-gray-300">Tab</span> to cycle.
+      <h1 class="display text-2xl lg:text-4xl">POKÉ / CENTER</h1>
+      <p class="text-xs lg:text-sm text-gray-400 mt-1 max-w-3xl">
+        Upload a near-top-down photo. Drag <span class="text-cyan-400 font-semibold">cyan</span> = outer card edge,
+        <span class="text-yellow-400 font-semibold">yellow</span> = inner frame edge.
+        <span class="hidden lg:inline">Pinch / wheel = zoom. Drag empty area = pan. Arrow keys nudge selected handle 1 px (Shift = 10 px).</span>
+        <span class="lg:hidden">Pinch to zoom. Drag empty area to pan.</span>
       </p>
     </div>
     <a href="index.html" class="mono text-[11px] text-gray-500 hover:text-yellow-400 whitespace-nowrap shrink-0 mt-2">← POKÉ / FIND</a>
   </header>
 
-  <div class="flex flex-wrap gap-2 mb-4 items-center">
+  <div class="flex flex-wrap gap-2 mb-3 items-center">
     <label class="btn btn-primary cursor-pointer">
       <input type="file" id="file" accept="image/*" class="hidden" />
-      Upload photo
+      Upload
     </label>
-    <button id="auto" class="btn btn-secondary">Auto-detect outer</button>
-    <button id="reset" class="btn btn-secondary">Reset handles</button>
-    <span class="text-xs text-gray-500 ml-2">
+    <button id="auto" class="btn btn-secondary">Auto-detect</button>
+    <button id="rotate" class="btn btn-secondary" title="Rotate 90° clockwise">⟳ Rotate</button>
+    <button id="reset-view" class="btn btn-secondary" title="Reset zoom and pan">Fit</button>
+    <button id="reset" class="btn btn-secondary" title="Reset handles to defaults">Reset handles</button>
+    <span class="zoom-badge mono"><span id="zoom-display">100%</span></span>
+    <span class="text-[11px] text-gray-500 hidden md:inline">
       <span class="legend-dot" style="background:#22d3ee"></span>outer
       <span class="legend-dot ml-2" style="background:#facc15"></span>inner
     </span>
-    <span id="status" class="ml-auto text-xs text-gray-400"></span>
+    <span id="status" class="ml-auto text-[11px] text-gray-400 max-w-xs truncate"></span>
   </div>
 
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 lg:gap-4">
 
     <div class="lg:col-span-2">
       <div class="canvas-wrap" id="canvas-wrap">
         <canvas id="img-canvas" class="image-canvas" width="800" height="450"></canvas>
         <canvas id="overlay-canvas" class="overlay-canvas" width="800" height="450"></canvas>
-        <div id="empty-state" class="absolute inset-0 flex items-center justify-center text-gray-600 text-sm pointer-events-none">
+        <div class="minimap-wrap" id="minimap-wrap" style="display:none;">
+          <canvas id="minimap-canvas" class="minimap-canvas" width="110" height="150"></canvas>
+        </div>
+        <div id="empty-state" class="absolute inset-0 flex items-center justify-center text-gray-600 text-sm pointer-events-none p-4 text-center">
           Upload a photo to begin.
         </div>
+      </div>
+      <div class="text-[10px] text-gray-500 mt-1.5 lg:hidden">
+        Tap handle to select. Pinch to zoom. Drag empty area to pan. Use ⟳ to rotate.
       </div>
     </div>
 
@@ -99,7 +110,7 @@
       <div class="stat">
         <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Schematic preview</div>
         <canvas id="warp-canvas" class="w-full bg-black rounded" style="aspect-ratio: 63/88;"></canvas>
-        <div class="text-[11px] text-gray-500 mt-2">Outer = card boundary after perspective correction. Yellow = your inner-frame markers warped into the rectified space.</div>
+        <div class="text-[11px] text-gray-500 mt-2">Outer = card boundary after perspective correction. Yellow = inner-frame markers warped into rectified space.</div>
       </div>
 
       <details class="text-xs text-gray-400 stat">
@@ -118,8 +129,8 @@
           <li>Outer = physical card edge. Inner = inner colored frame edge (yellow/holo border).</li>
           <li>Full-art / V / ex / SAR cards often lack a clear inner frame — centering becomes ambiguous.</li>
           <li>Card is assumed flat. Bent cards will give wrong mm offsets.</li>
-          <li>Card dimensions assumed 63 × 88 mm. mm values are estimates derived from the homography.</li>
-          <li>For best capture: dark matte background, no flash, even diffused light, phone parallel to card, full card in frame with margin, sleeves removed.</li>
+          <li>Card dimensions assumed 63 × 88 mm.</li>
+          <li>Best capture: dark matte background, no flash, even diffused light, phone parallel to card, full card with margin, sleeves removed.</li>
         </ul>
       </details>
     </aside>
@@ -131,33 +142,520 @@
   'use strict';
 
   const CARD_MM_W = 63, CARD_MM_H = 88;
-  const TW = 630, TH = 880;          // target rectified pixel size (aspect 63:88)
-  const DISPLAY_MAX = 1800;          // downscale source image for display
-  const PROC_MAX = 800;              // downscale for OpenCV processing
+  const TW = 630, TH = 880;
+  const DISPLAY_MAX = 1800;
+  const PROC_MAX = 800;
+  const MIN_ZOOM = 0.5, MAX_ZOOM = 16;
 
   const state = {
     cv: null,
     cvLoading: null,
-    img: null,           // HTMLImageElement (display copy)
+    img: null,
     imgW: 0, imgH: 0,
     canvasW: 0, canvasH: 0,
-    scale: 1,
-    outer: null,         // [{x,y} x 4] in image coords, TL, TR, BR, BL
+    outer: null,
     inner: null,
+    selected: null,
+    pointers: new Map(),
     drag: null,
+    minimapDrag: false,
     rafPending: false,
-    selected: null,      // {set:'outer'|'inner', idx:0-3} — last touched handle, used for keyboard nudge
+    view: {
+      zoom: 1,
+      offsetX: 0, offsetY: 0,
+      rot: 0,
+      rotatedSrc: null,
+      rotW: 0, rotH: 0,
+      baseScale: 1,
+      scaleFinal: 1,
+      _mmOx: 0, _mmOy: 0, _mmScale: 1,
+    },
   };
 
   const $ = id => document.getElementById(id);
   const imgCanvas = $('img-canvas');
   const overlayCanvas = $('overlay-canvas');
+  const minimapCanvas = $('minimap-canvas');
+  const minimapWrap = $('minimap-wrap');
   const warpCanvas = $('warp-canvas');
   const ctx = imgCanvas.getContext('2d');
   const octx = overlayCanvas.getContext('2d');
+  const mctx = minimapCanvas.getContext('2d');
   const wctx = warpCanvas.getContext('2d');
 
   const setStatus = s => $('status').textContent = s;
+
+  // ─────────────────────────────────────────────────────────────
+  // Transform helpers
+  // ─────────────────────────────────────────────────────────────
+  function rotatedDims(rot, w, h) {
+    return (rot === 90 || rot === 270) ? { w: h, h: w } : { w, h };
+  }
+  function imageToRotated(p) {
+    const r = state.view.rot, W = state.imgW, H = state.imgH;
+    if (r === 0)   return { x: p.x, y: p.y };
+    if (r === 90)  return { x: H - p.y, y: p.x };
+    if (r === 180) return { x: W - p.x, y: H - p.y };
+    /* 270 */      return { x: p.y, y: W - p.x };
+  }
+  function rotatedToImage(p) {
+    const r = state.view.rot, W = state.imgW, H = state.imgH;
+    if (r === 0)   return { x: p.x, y: p.y };
+    if (r === 90)  return { x: p.y, y: H - p.x };
+    if (r === 180) return { x: W - p.x, y: H - p.y };
+    /* 270 */      return { x: W - p.y, y: p.x };
+  }
+  function imageToCanvas(p) {
+    const r = imageToRotated(p);
+    const v = state.view;
+    return { x: (r.x - v.offsetX) * v.scaleFinal, y: (r.y - v.offsetY) * v.scaleFinal };
+  }
+  function canvasToRotated(p) {
+    const v = state.view;
+    return { x: p.x / v.scaleFinal + v.offsetX, y: p.y / v.scaleFinal + v.offsetY };
+  }
+  function canvasToImage(p) {
+    return rotatedToImage(canvasToRotated(p));
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Build rotated offscreen source (cached)
+  // ─────────────────────────────────────────────────────────────
+  function buildRotatedSource() {
+    if (!state.img) return;
+    const v = state.view;
+    const rd = rotatedDims(v.rot, state.imgW, state.imgH);
+    v.rotW = rd.w; v.rotH = rd.h;
+    const off = document.createElement('canvas');
+    off.width = rd.w; off.height = rd.h;
+    const c = off.getContext('2d');
+    c.translate(rd.w / 2, rd.h / 2);
+    c.rotate(v.rot * Math.PI / 180);
+    c.drawImage(state.img, -state.imgW / 2, -state.imgH / 2);
+    v.rotatedSrc = off;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // View management
+  // ─────────────────────────────────────────────────────────────
+  function fitCanvas() {
+    if (!state.img) return;
+    const v = state.view;
+    const wrap = $('canvas-wrap');
+    const maxW = Math.max(280, wrap.clientWidth);
+    const aspect = v.rotW / v.rotH;
+    let cw = maxW, ch = cw / aspect;
+    const maxH = window.innerHeight * 0.72;
+    if (ch > maxH) { ch = maxH; cw = ch * aspect; }
+    state.canvasW = Math.round(cw);
+    state.canvasH = Math.round(ch);
+    imgCanvas.width = state.canvasW;
+    imgCanvas.height = state.canvasH;
+    overlayCanvas.width = state.canvasW;
+    overlayCanvas.height = state.canvasH;
+    overlayCanvas.style.width = state.canvasW + 'px';
+    overlayCanvas.style.height = state.canvasH + 'px';
+    v.baseScale = state.canvasW / v.rotW;
+  }
+
+  function recomputeScale() {
+    const v = state.view;
+    v.scaleFinal = v.baseScale * v.zoom;
+    clampViewOffset();
+    $('zoom-display').textContent = Math.round(v.zoom * 100) + '%';
+  }
+
+  function clampViewOffset() {
+    const v = state.view;
+    const viewW = state.canvasW / v.scaleFinal;
+    const viewH = state.canvasH / v.scaleFinal;
+    if (viewW >= v.rotW) v.offsetX = (v.rotW - viewW) / 2;
+    else v.offsetX = Math.max(0, Math.min(v.rotW - viewW, v.offsetX));
+    if (viewH >= v.rotH) v.offsetY = (v.rotH - viewH) / 2;
+    else v.offsetY = Math.max(0, Math.min(v.rotH - viewH, v.offsetY));
+  }
+
+  function resetView() {
+    state.view.zoom = 1;
+    state.view.offsetX = 0;
+    state.view.offsetY = 0;
+    recomputeScale();
+    scheduleDraw();
+  }
+
+  function zoomAt(canvasPt, newZoom) {
+    newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
+    const v = state.view;
+    const before = canvasToRotated(canvasPt);
+    v.zoom = newZoom;
+    recomputeScale();
+    const after = canvasToRotated(canvasPt);
+    v.offsetX += before.x - after.x;
+    v.offsetY += before.y - after.y;
+    clampViewOffset();
+    scheduleDraw();
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Drawing
+  // ─────────────────────────────────────────────────────────────
+  function scheduleDraw() {
+    if (state.rafPending) return;
+    state.rafPending = true;
+    requestAnimationFrame(() => {
+      state.rafPending = false;
+      draw();
+      compute();
+    });
+  }
+
+  function draw() {
+    if (!state.img || !state.view.rotatedSrc) return;
+    const v = state.view;
+    const viewW = state.canvasW / v.scaleFinal;
+    const viewH = state.canvasH / v.scaleFinal;
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, state.canvasW, state.canvasH);
+    ctx.drawImage(v.rotatedSrc,
+      v.offsetX, v.offsetY, viewW, viewH,
+      0, 0, state.canvasW, state.canvasH);
+
+    octx.clearRect(0, 0, state.canvasW, state.canvasH);
+    drawQuad(state.outer, '#22d3ee');
+    drawQuad(state.inner, '#facc15');
+    drawHandles(state.outer, '#22d3ee', 'outer');
+    drawHandles(state.inner, '#facc15', 'inner');
+
+    drawMinimap();
+  }
+
+  function drawQuad(pts, color) {
+    if (!pts) return;
+    octx.beginPath();
+    pts.forEach((p, i) => {
+      const cp = imageToCanvas(p);
+      if (i === 0) octx.moveTo(cp.x, cp.y);
+      else octx.lineTo(cp.x, cp.y);
+    });
+    octx.closePath();
+    octx.strokeStyle = color;
+    octx.lineWidth = 1.5;
+    octx.stroke();
+  }
+
+  function drawHandles(pts, color, setName) {
+    if (!pts) return;
+    pts.forEach((p, idx) => {
+      const cp = imageToCanvas(p);
+      const isSel = state.selected && state.selected.set === setName && state.selected.idx === idx;
+      octx.beginPath();
+      octx.arc(cp.x, cp.y, 4, 0, Math.PI * 2);
+      octx.fillStyle = color;
+      octx.fill();
+      octx.beginPath();
+      octx.arc(cp.x, cp.y, isSel ? 11 : 8, 0, Math.PI * 2);
+      octx.lineWidth = isSel ? 2.5 : 1.5;
+      octx.strokeStyle = isSel ? '#ffffff' : color + 'cc';
+      octx.stroke();
+      const r = 14;
+      octx.beginPath();
+      octx.moveTo(cp.x - r, cp.y); octx.lineTo(cp.x - 6, cp.y);
+      octx.moveTo(cp.x + 6, cp.y); octx.lineTo(cp.x + r, cp.y);
+      octx.moveTo(cp.x, cp.y - r); octx.lineTo(cp.x, cp.y - 6);
+      octx.moveTo(cp.x, cp.y + 6); octx.lineTo(cp.x, cp.y + r);
+      octx.lineWidth = 1;
+      octx.strokeStyle = color + 'aa';
+      octx.stroke();
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Minimap
+  // ─────────────────────────────────────────────────────────────
+  function drawMinimap() {
+    if (!state.view.rotatedSrc) return;
+    const v = state.view;
+    const mw = minimapCanvas.width, mh = minimapCanvas.height;
+    const aspect = v.rotW / v.rotH;
+    let drawW = mw, drawH = mw / aspect;
+    if (drawH > mh) { drawH = mh; drawW = mh * aspect; }
+    const ox = (mw - drawW) / 2, oy = (mh - drawH) / 2;
+    const scale = drawW / v.rotW;
+    v._mmOx = ox; v._mmOy = oy; v._mmScale = scale;
+
+    mctx.fillStyle = '#0a0a0a';
+    mctx.fillRect(0, 0, mw, mh);
+    mctx.drawImage(v.rotatedSrc, ox, oy, drawW, drawH);
+
+    const drawQ = (pts, color) => {
+      if (!pts) return;
+      mctx.beginPath();
+      pts.forEach((p, i) => {
+        const r = imageToRotated(p);
+        const x = ox + r.x * scale, y = oy + r.y * scale;
+        if (i === 0) mctx.moveTo(x, y); else mctx.lineTo(x, y);
+      });
+      mctx.closePath();
+      mctx.strokeStyle = color;
+      mctx.lineWidth = 1;
+      mctx.stroke();
+    };
+    drawQ(state.outer, '#22d3ee');
+    drawQ(state.inner, '#facc15');
+
+    const vpX = ox + v.offsetX * scale;
+    const vpY = oy + v.offsetY * scale;
+    const vpW = (state.canvasW / v.scaleFinal) * scale;
+    const vpH = (state.canvasH / v.scaleFinal) * scale;
+    mctx.fillStyle = 'rgba(255,255,255,0.1)';
+    mctx.fillRect(vpX, vpY, vpW, vpH);
+    mctx.strokeStyle = '#ffffff';
+    mctx.lineWidth = 1.5;
+    mctx.strokeRect(vpX, vpY, vpW, vpH);
+  }
+
+  function panToMinimap(canvasPt) {
+    const v = state.view;
+    const rx = (canvasPt.x - v._mmOx) / v._mmScale;
+    const ry = (canvasPt.y - v._mmOy) / v._mmScale;
+    const viewW = state.canvasW / v.scaleFinal;
+    const viewH = state.canvasH / v.scaleFinal;
+    v.offsetX = rx - viewW / 2;
+    v.offsetY = ry - viewH / 2;
+    clampViewOffset();
+    scheduleDraw();
+  }
+
+  function minimapPt(e) {
+    const rect = minimapCanvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+  minimapCanvas.addEventListener('pointerdown', e => {
+    if (!state.img) return;
+    e.preventDefault();
+    e.stopPropagation();
+    minimapCanvas.setPointerCapture(e.pointerId);
+    state.minimapDrag = true;
+    panToMinimap(minimapPt(e));
+  });
+  minimapCanvas.addEventListener('pointermove', e => {
+    if (!state.minimapDrag) return;
+    e.preventDefault();
+    panToMinimap(minimapPt(e));
+  });
+  const mmEnd = e => {
+    state.minimapDrag = false;
+    try { minimapCanvas.releasePointerCapture(e.pointerId); } catch (_) {}
+  };
+  minimapCanvas.addEventListener('pointerup', mmEnd);
+  minimapCanvas.addEventListener('pointercancel', mmEnd);
+
+  // ─────────────────────────────────────────────────────────────
+  // Main canvas pointer: handle drag / pan / pinch
+  // ─────────────────────────────────────────────────────────────
+  function getEventPoint(e) {
+    const rect = overlayCanvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  function pickHandle(canPt) {
+    const hitR = 22;
+    for (const set of ['inner', 'outer']) {
+      const pts = state[set];
+      if (!pts) continue;
+      for (let i = 0; i < 4; i++) {
+        const cp = imageToCanvas(pts[i]);
+        if (Math.hypot(cp.x - canPt.x, cp.y - canPt.y) <= hitR) return { set, idx: i };
+      }
+    }
+    return null;
+  }
+
+  overlayCanvas.addEventListener('pointerdown', e => {
+    if (!state.img) return;
+    e.preventDefault();
+    overlayCanvas.setPointerCapture(e.pointerId);
+    const pt = getEventPoint(e);
+    state.pointers.set(e.pointerId, { pt });
+
+    if (state.pointers.size === 1) {
+      const hit = pickHandle(pt);
+      if (hit) {
+        state.drag = { mode: 'handle', set: hit.set, idx: hit.idx };
+        state.selected = hit;
+        scheduleDraw();
+      } else {
+        state.drag = {
+          mode: 'pan',
+          startPt: pt,
+          startOffset: { x: state.view.offsetX, y: state.view.offsetY },
+        };
+      }
+    } else if (state.pointers.size === 2) {
+      const pts = [...state.pointers.values()].map(p => p.pt);
+      const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      state.drag = {
+        mode: 'pinch',
+        startDist: dist || 1,
+        startZoom: state.view.zoom,
+        startMid: mid,
+        startOffset: { x: state.view.offsetX, y: state.view.offsetY },
+      };
+    }
+  });
+
+  overlayCanvas.addEventListener('pointermove', e => {
+    if (!state.pointers.has(e.pointerId)) return;
+    e.preventDefault();
+    const pt = getEventPoint(e);
+    state.pointers.set(e.pointerId, { pt });
+    if (!state.drag) return;
+
+    if (state.drag.mode === 'handle' && state.pointers.size === 1) {
+      const ip = canvasToImage(pt);
+      ip.x = Math.max(0, Math.min(state.imgW, ip.x));
+      ip.y = Math.max(0, Math.min(state.imgH, ip.y));
+      state[state.drag.set][state.drag.idx] = ip;
+      scheduleDraw();
+    } else if (state.drag.mode === 'pan' && state.pointers.size === 1) {
+      const dx = pt.x - state.drag.startPt.x;
+      const dy = pt.y - state.drag.startPt.y;
+      state.view.offsetX = state.drag.startOffset.x - dx / state.view.scaleFinal;
+      state.view.offsetY = state.drag.startOffset.y - dy / state.view.scaleFinal;
+      clampViewOffset();
+      scheduleDraw();
+    } else if (state.drag.mode === 'pinch' && state.pointers.size === 2) {
+      const pts = [...state.pointers.values()].map(p => p.pt);
+      const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      const ratio = dist / state.drag.startDist;
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, state.drag.startZoom * ratio));
+      const v = state.view;
+      // anchor: keep the rotated point originally under startMid under current mid
+      const startScale = v.baseScale * state.drag.startZoom;
+      const startRotPt = {
+        x: state.drag.startMid.x / startScale + state.drag.startOffset.x,
+        y: state.drag.startMid.y / startScale + state.drag.startOffset.y,
+      };
+      v.zoom = newZoom;
+      v.scaleFinal = v.baseScale * v.zoom;
+      v.offsetX = startRotPt.x - mid.x / v.scaleFinal;
+      v.offsetY = startRotPt.y - mid.y / v.scaleFinal;
+      clampViewOffset();
+      $('zoom-display').textContent = Math.round(v.zoom * 100) + '%';
+      scheduleDraw();
+    }
+  });
+
+  const endPointer = e => {
+    state.pointers.delete(e.pointerId);
+    try { overlayCanvas.releasePointerCapture(e.pointerId); } catch (_) {}
+    if (state.pointers.size === 0) {
+      state.drag = null;
+    } else if (state.pointers.size === 1 && state.drag && state.drag.mode === 'pinch') {
+      const remaining = [...state.pointers.values()][0].pt;
+      state.drag = {
+        mode: 'pan',
+        startPt: remaining,
+        startOffset: { x: state.view.offsetX, y: state.view.offsetY },
+      };
+    }
+  };
+  overlayCanvas.addEventListener('pointerup', endPointer);
+  overlayCanvas.addEventListener('pointercancel', endPointer);
+
+  // ─────────────────────────────────────────────────────────────
+  // Wheel zoom
+  // ─────────────────────────────────────────────────────────────
+  overlayCanvas.addEventListener('wheel', e => {
+    if (!state.img) return;
+    e.preventDefault();
+    const factor = Math.pow(1.15, -Math.sign(e.deltaY));
+    zoomAt(getEventPoint(e), state.view.zoom * factor);
+  }, { passive: false });
+
+  // ─────────────────────────────────────────────────────────────
+  // Keyboard
+  // ─────────────────────────────────────────────────────────────
+  window.addEventListener('keydown', e => {
+    if (!state.img) return;
+    const target = e.target;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+
+    // View shortcuts (work without a selection)
+    if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomAt({ x: state.canvasW/2, y: state.canvasH/2 }, state.view.zoom * 1.25); return; }
+    if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomAt({ x: state.canvasW/2, y: state.canvasH/2 }, state.view.zoom / 1.25); return; }
+    if (e.key === '0') { e.preventDefault(); resetView(); return; }
+    if (e.key === 'r' || e.key === 'R') { e.preventDefault(); doRotate(); return; }
+
+    if (!state.selected) return;
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const order = [
+        { set: 'outer', idx: 0 }, { set: 'outer', idx: 1 }, { set: 'outer', idx: 2 }, { set: 'outer', idx: 3 },
+        { set: 'inner', idx: 0 }, { set: 'inner', idx: 1 }, { set: 'inner', idx: 2 }, { set: 'inner', idx: 3 },
+      ];
+      const cur = order.findIndex(o => o.set === state.selected.set && o.idx === state.selected.idx);
+      const next = (cur + (e.shiftKey ? -1 : 1) + 8) % 8;
+      state.selected = order[next];
+      scheduleDraw();
+      return;
+    }
+    if (e.key === 'Escape') { state.selected = null; scheduleDraw(); return; }
+
+    const step = e.shiftKey ? 10 : 1;
+    let dx = 0, dy = 0;
+    if (e.key === 'ArrowLeft')  dx = -step;
+    else if (e.key === 'ArrowRight') dx = step;
+    else if (e.key === 'ArrowUp')    dy = -step;
+    else if (e.key === 'ArrowDown')  dy = step;
+    else return;
+    e.preventDefault();
+    const p = state[state.selected.set][state.selected.idx];
+    p.x = Math.max(0, Math.min(state.imgW, p.x + dx));
+    p.y = Math.max(0, Math.min(state.imgH, p.y + dy));
+    scheduleDraw();
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // Buttons
+  // ─────────────────────────────────────────────────────────────
+  function doRotate() {
+    if (!state.img) return;
+    state.view.rot = (state.view.rot + 90) % 360;
+    buildRotatedSource();
+    fitCanvas();
+    resetView();
+  }
+
+  $('rotate').addEventListener('click', doRotate);
+  $('reset-view').addEventListener('click', () => { if (state.img) resetView(); });
+  $('reset').addEventListener('click', () => {
+    if (!state.img) return;
+    resetHandles();
+    scheduleDraw();
+  });
+
+  $('auto').addEventListener('click', async () => {
+    if (!state.img) { setStatus('Upload an image first.'); return; }
+    try {
+      const cv = await loadCV();
+      setStatus('Detecting outer card edge…');
+      await new Promise(r => setTimeout(r, 30));
+      const corners = detectOuter(cv);
+      if (corners) {
+        state.outer = corners;
+        scheduleDraw();
+        setStatus('Outer detected. Refine cyan handles, then drag yellow handles to inner frame.');
+      } else {
+        setStatus('No clean rectangular edge detected. Drag handles manually.');
+      }
+    } catch (err) {
+      console.error(err);
+      setStatus('Auto-detect failed: ' + err.message);
+    }
+  });
 
   // ─────────────────────────────────────────────────────────────
   // File upload
@@ -167,7 +665,6 @@
     if (!f) return;
     setStatus('Loading image…');
     try {
-      // createImageBitmap respects EXIF orientation
       const bmp = await createImageBitmap(f, { imageOrientation: 'from-image' });
       let w = bmp.width, h = bmp.height;
       if (Math.max(w, h) > DISPLAY_MAX) {
@@ -183,12 +680,18 @@
         state.img = img;
         state.imgW = w;
         state.imgH = h;
-        resetHandles();
+        state.view.rot = 0;
+        state.view.zoom = 1;
+        state.view.offsetX = 0;
+        state.view.offsetY = 0;
+        buildRotatedSource();
         fitCanvas();
-        draw();
-        compute();
+        resetHandles();
+        recomputeScale();
+        scheduleDraw();
+        minimapWrap.style.display = '';
         $('empty-state').style.display = 'none';
-        setStatus('Ready. Drag handles, or click Auto-detect outer.');
+        setStatus('Ready. Drag handles. Pinch / wheel to zoom.');
       };
       img.src = off.toDataURL('image/jpeg', 0.92);
     } catch (err) {
@@ -208,211 +711,20 @@
       { x: ix,   y: iy   }, { x: w-ix, y: iy   },
       { x: w-ix, y: h-iy }, { x: ix,   y: h-iy },
     ];
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // Canvas sizing
-  // ─────────────────────────────────────────────────────────────
-  function fitCanvas() {
-    if (!state.img) return;
-    const wrap = $('canvas-wrap');
-    const maxW = Math.max(320, wrap.clientWidth);
-    const ratio = state.imgW / state.imgH;
-    let cw = maxW, ch = cw / ratio;
-    const maxH = window.innerHeight * 0.78;
-    if (ch > maxH) { ch = maxH; cw = ch * ratio; }
-    state.canvasW = Math.round(cw);
-    state.canvasH = Math.round(ch);
-    state.scale = state.canvasW / state.imgW;
-    imgCanvas.width = state.canvasW;
-    imgCanvas.height = state.canvasH;
-    overlayCanvas.width = state.canvasW;
-    overlayCanvas.height = state.canvasH;
-    overlayCanvas.style.width = state.canvasW + 'px';
-    overlayCanvas.style.height = state.canvasH + 'px';
-  }
-  const ro = new ResizeObserver(() => { if (state.img) { fitCanvas(); draw(); } });
-  ro.observe($('canvas-wrap'));
-
-  // ─────────────────────────────────────────────────────────────
-  // Drawing
-  // ─────────────────────────────────────────────────────────────
-  const img2can = p => ({ x: p.x * state.scale, y: p.y * state.scale });
-  const can2img = p => ({ x: p.x / state.scale, y: p.y / state.scale });
-
-  function scheduleDraw() {
-    if (state.rafPending) return;
-    state.rafPending = true;
-    requestAnimationFrame(() => { state.rafPending = false; draw(); compute(); });
-  }
-
-  function draw() {
-    if (!state.img) return;
-    ctx.drawImage(state.img, 0, 0, state.canvasW, state.canvasH);
-    octx.clearRect(0, 0, state.canvasW, state.canvasH);
-    drawQuad(state.outer, '#22d3ee');
-    drawQuad(state.inner, '#facc15');
-    drawHandles(state.outer, '#22d3ee', 'outer');
-    drawHandles(state.inner, '#facc15', 'inner');
-  }
-
-  function drawQuad(pts, color) {
-    octx.beginPath();
-    pts.forEach((p, i) => {
-      const cp = img2can(p);
-      if (i === 0) octx.moveTo(cp.x, cp.y);
-      else octx.lineTo(cp.x, cp.y);
-    });
-    octx.closePath();
-    octx.strokeStyle = color;
-    octx.lineWidth = 1.5;
-    octx.stroke();
-  }
-
-  function drawHandles(pts, color, setName) {
-    pts.forEach((p, idx) => {
-      const cp = img2can(p);
-      const isSel = state.selected && state.selected.set === setName && state.selected.idx === idx;
-      // small filled dot
-      octx.beginPath();
-      octx.arc(cp.x, cp.y, 4, 0, Math.PI * 2);
-      octx.fillStyle = color;
-      octx.fill();
-      // outer ring (highlighted if selected)
-      octx.beginPath();
-      octx.arc(cp.x, cp.y, isSel ? 10 : 7, 0, Math.PI * 2);
-      octx.lineWidth = isSel ? 2.5 : 1.5;
-      octx.strokeStyle = isSel ? '#ffffff' : color + 'cc';
-      octx.stroke();
-      // crosshair for precision
-      const r = 12;
-      octx.beginPath();
-      octx.moveTo(cp.x - r, cp.y); octx.lineTo(cp.x - 5, cp.y);
-      octx.moveTo(cp.x + 5, cp.y); octx.lineTo(cp.x + r, cp.y);
-      octx.moveTo(cp.x, cp.y - r); octx.lineTo(cp.x, cp.y - 5);
-      octx.moveTo(cp.x, cp.y + 5); octx.lineTo(cp.x, cp.y + r);
-      octx.lineWidth = 1;
-      octx.strokeStyle = color + 'aa';
-      octx.stroke();
-    });
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // Pointer / drag
-  // ─────────────────────────────────────────────────────────────
-  function getEventPoint(e) {
-    const rect = overlayCanvas.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  }
-
-  function pickHandle(canPt) {
-    const hitR = 22;
-    // inner first so inner handles win when overlapping outer
-    for (const set of ['inner', 'outer']) {
-      const pts = state[set];
-      for (let i = 0; i < 4; i++) {
-        const cp = img2can(pts[i]);
-        if (Math.hypot(cp.x - canPt.x, cp.y - canPt.y) <= hitR) {
-          return { set, idx: i };
-        }
-      }
-    }
-    return null;
-  }
-
-  overlayCanvas.addEventListener('pointerdown', e => {
-    if (!state.img) return;
-    e.preventDefault();
-    overlayCanvas.setPointerCapture(e.pointerId);
-    const hit = pickHandle(getEventPoint(e));
-    state.drag = hit;
-    if (hit) state.selected = hit;
-    scheduleDraw();
-  });
-  overlayCanvas.addEventListener('pointermove', e => {
-    if (!state.drag) return;
-    e.preventDefault();
-    const ip = can2img(getEventPoint(e));
-    ip.x = Math.max(0, Math.min(state.imgW, ip.x));
-    ip.y = Math.max(0, Math.min(state.imgH, ip.y));
-    state[state.drag.set][state.drag.idx] = ip;
-    scheduleDraw();
-  });
-  const endDrag = e => {
-    state.drag = null;
-    try { overlayCanvas.releasePointerCapture(e.pointerId); } catch (_) {}
-  };
-  overlayCanvas.addEventListener('pointerup', endDrag);
-  overlayCanvas.addEventListener('pointercancel', endDrag);
-
-  // Arrow-key nudge for selected handle: Arrow=1 image px, Shift+Arrow=10 image px
-  window.addEventListener('keydown', e => {
-    if (!state.img || !state.selected) return;
-    const target = e.target;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
-    const step = e.shiftKey ? 10 : 1;
-    let dx = 0, dy = 0;
-    if (e.key === 'ArrowLeft') dx = -step;
-    else if (e.key === 'ArrowRight') dx = step;
-    else if (e.key === 'ArrowUp') dy = -step;
-    else if (e.key === 'ArrowDown') dy = step;
-    else if (e.key === 'Tab') {
-      // cycle through 8 handles
-      e.preventDefault();
-      const order = [
-        { set: 'outer', idx: 0 }, { set: 'outer', idx: 1 }, { set: 'outer', idx: 2 }, { set: 'outer', idx: 3 },
-        { set: 'inner', idx: 0 }, { set: 'inner', idx: 1 }, { set: 'inner', idx: 2 }, { set: 'inner', idx: 3 },
-      ];
-      const cur = order.findIndex(o => o.set === state.selected.set && o.idx === state.selected.idx);
-      const next = (cur + (e.shiftKey ? -1 : 1) + 8) % 8;
-      state.selected = order[next];
-      scheduleDraw();
-      return;
-    }
-    else if (e.key === 'Escape') {
-      state.selected = null;
-      scheduleDraw();
-      return;
-    }
-    else return;
-    e.preventDefault();
-    const p = state[state.selected.set][state.selected.idx];
-    p.x = Math.max(0, Math.min(state.imgW, p.x + dx));
-    p.y = Math.max(0, Math.min(state.imgH, p.y + dy));
-    scheduleDraw();
-  });
-
-  // ─────────────────────────────────────────────────────────────
-  // Buttons
-  // ─────────────────────────────────────────────────────────────
-  $('reset').addEventListener('click', () => {
-    if (!state.img) return;
-    resetHandles();
-    draw();
     compute();
-  });
+  }
 
-  $('auto').addEventListener('click', async () => {
-    if (!state.img) { setStatus('Upload an image first.'); return; }
-    try {
-      const cv = await loadCV();
-      setStatus('Detecting outer card edge…');
-      // run on next tick so status repaints
-      await new Promise(r => setTimeout(r, 30));
-      const corners = detectOuter(cv);
-      if (corners) {
-        state.outer = corners;
-        draw();
-        compute();
-        setStatus('Outer detected. Refine cyan handles, then drag yellow handles to inner frame.');
-      } else {
-        setStatus('No clean rectangular edge detected. Drag handles manually.');
-      }
-    } catch (err) {
-      console.error(err);
-      setStatus('Auto-detect failed: ' + err.message);
+  // ─────────────────────────────────────────────────────────────
+  // Resize observer
+  // ─────────────────────────────────────────────────────────────
+  const ro = new ResizeObserver(() => {
+    if (state.img) {
+      fitCanvas();
+      recomputeScale();
+      scheduleDraw();
     }
   });
+  ro.observe($('canvas-wrap'));
 
   // ─────────────────────────────────────────────────────────────
   // OpenCV.js lazy loader
@@ -434,19 +746,10 @@
         if (pollTimer) clearInterval(pollTimer);
         if (timeoutTimer) clearTimeout(timeoutTimer);
       };
-      const done = () => {
-        cleanup();
-        state.cv = window.cv;
-        setStatus('OpenCV.js ready.');
-        resolve(window.cv);
-      };
-      const fail = msg => {
-        cleanup();
-        state.cvLoading = null;
-        reject(new Error(msg));
-      };
+      const done = () => { cleanup(); state.cv = window.cv; setStatus('OpenCV.js ready.'); resolve(window.cv); };
+      const fail = msg => { cleanup(); state.cvLoading = null; reject(new Error(msg)); };
 
-      timeoutTimer = setTimeout(() => fail('OpenCV.js load timed out after 2 min — try refresh or check network.'), TIMEOUT_MS);
+      timeoutTimer = setTimeout(() => fail('OpenCV.js load timed out after 2 min.'), TIMEOUT_MS);
       pollTimer = setInterval(() => {
         if (window.cv && typeof window.cv.Mat === 'function') done();
       }, 200);
@@ -455,12 +758,9 @@
       s.src = 'https://docs.opencv.org/4.10.0/opencv.js';
       s.async = true;
       s.onerror = () => fail('Failed to fetch OpenCV.js (network blocked or CDN down).');
-      // Best-effort callback in case it fires before our poll catches it
       s.onload = () => {
         if (window.cv && typeof window.cv.Mat === 'function') { done(); return; }
-        if (window.cv) {
-          try { window.cv['onRuntimeInitialized'] = done; } catch (_) {}
-        }
+        if (window.cv) { try { window.cv['onRuntimeInitialized'] = done; } catch (_) {} }
       };
       document.head.appendChild(s);
     });
@@ -474,7 +774,6 @@
     const tmp = document.createElement('canvas');
     tmp.width = pw; tmp.height = ph;
     tmp.getContext('2d').drawImage(state.img, 0, 0, pw, ph);
-
     const src = cv.imread(tmp);
     const gray = new cv.Mat();
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
@@ -483,11 +782,9 @@
     cv.Canny(gray, edges, 50, 150);
     const k = cv.Mat.ones(3, 3, cv.CV_8U);
     cv.dilate(edges, edges, k);
-
     const contours = new cv.MatVector();
     const hier = new cv.Mat();
     cv.findContours(edges, contours, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
     let best = null, bestArea = 0;
     const imgArea = pw * ph;
     for (let i = 0; i < contours.size(); i++) {
@@ -505,13 +802,10 @@
       approx.delete();
       c.delete();
     }
-
     let corners = null;
     if (best) {
       const raw = [];
-      for (let i = 0; i < 4; i++) {
-        raw.push({ x: best.data32S[i * 2] / r, y: best.data32S[i * 2 + 1] / r });
-      }
+      for (let i = 0; i < 4; i++) raw.push({ x: best.data32S[i*2] / r, y: best.data32S[i*2+1] / r });
       corners = orderCorners(raw);
       best.delete();
     }
@@ -521,21 +815,12 @@
   }
 
   function orderCorners(pts) {
-    // TL = min(x+y), BR = max(x+y), TR = min(y-x), BL = max(y-x)
     const sum = pts.map(p => p.x + p.y);
     const diff = pts.map(p => p.y - p.x);
-    const idxMin = a => a.indexOf(Math.min(...a));
-    const idxMax = a => a.indexOf(Math.max(...a));
-    const tl = pts[idxMin(sum)];
-    const br = pts[idxMax(sum)];
-    const tr = pts[idxMin(diff)];
-    const bl = pts[idxMax(diff)];
-    return [
-      { x: tl.x, y: tl.y },
-      { x: tr.x, y: tr.y },
-      { x: br.x, y: br.y },
-      { x: bl.x, y: bl.y },
-    ];
+    const iMin = a => a.indexOf(Math.min(...a));
+    const iMax = a => a.indexOf(Math.max(...a));
+    const tl = pts[iMin(sum)], br = pts[iMax(sum)], tr = pts[iMin(diff)], bl = pts[iMax(diff)];
+    return [{x:tl.x,y:tl.y},{x:tr.x,y:tr.y},{x:br.x,y:br.y},{x:bl.x,y:bl.y}];
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -546,76 +831,63 @@
     for (let i = 0; i < 4; i++) {
       const { x: sx, y: sy } = src[i];
       const { x: dx, y: dy } = dst[i];
-      M.push([sx, sy, 1, 0, 0, 0, -dx * sx, -dx * sy]);
-      M.push([0, 0, 0, sx, sy, 1, -dy * sx, -dy * sy]);
+      M.push([sx, sy, 1, 0, 0, 0, -dx*sx, -dx*sy]);
+      M.push([0, 0, 0, sx, sy, 1, -dy*sx, -dy*sy]);
       b.push(dx); b.push(dy);
     }
     const h = solveLinear(M, b);
     if (!h) return null;
-    return [
-      [h[0], h[1], h[2]],
-      [h[3], h[4], h[5]],
-      [h[6], h[7], 1   ],
-    ];
+    return [[h[0],h[1],h[2]],[h[3],h[4],h[5]],[h[6],h[7],1]];
   }
-
   function solveLinear(M, b) {
     const n = 8;
     const A = M.map((row, i) => [...row, b[i]]);
     for (let i = 0; i < n; i++) {
-      let maxR = i;
-      for (let r = i + 1; r < n; r++) {
-        if (Math.abs(A[r][i]) > Math.abs(A[maxR][i])) maxR = r;
-      }
-      if (Math.abs(A[maxR][i]) < 1e-12) return null;
-      [A[i], A[maxR]] = [A[maxR], A[i]];
-      for (let r = i + 1; r < n; r++) {
+      let mr = i;
+      for (let r = i+1; r < n; r++) if (Math.abs(A[r][i]) > Math.abs(A[mr][i])) mr = r;
+      if (Math.abs(A[mr][i]) < 1e-12) return null;
+      [A[i], A[mr]] = [A[mr], A[i]];
+      for (let r = i+1; r < n; r++) {
         const f = A[r][i] / A[i][i];
         for (let c = i; c <= n; c++) A[r][c] -= f * A[i][c];
       }
     }
     const x = new Array(n).fill(0);
-    for (let i = n - 1; i >= 0; i--) {
+    for (let i = n-1; i >= 0; i--) {
       let s = A[i][n];
-      for (let j = i + 1; j < n; j++) s -= A[i][j] * x[j];
+      for (let j = i+1; j < n; j++) s -= A[i][j] * x[j];
       x[i] = s / A[i][i];
     }
     return x;
   }
-
   function applyH(H, p) {
-    const x = H[0][0] * p.x + H[0][1] * p.y + H[0][2];
-    const y = H[1][0] * p.x + H[1][1] * p.y + H[1][2];
-    const w = H[2][0] * p.x + H[2][1] * p.y + H[2][2];
-    return { x: x / w, y: y / w };
+    const x = H[0][0]*p.x + H[0][1]*p.y + H[0][2];
+    const y = H[1][0]*p.x + H[1][1]*p.y + H[1][2];
+    const w = H[2][0]*p.x + H[2][1]*p.y + H[2][2];
+    return { x: x/w, y: y/w };
   }
 
   // ─────────────────────────────────────────────────────────────
-  // Compute centering + display
+  // Compute centering
   // ─────────────────────────────────────────────────────────────
   function compute() {
     if (!state.outer || !state.inner || !state.img) return;
-    const dst = [{ x: 0, y: 0 }, { x: TW, y: 0 }, { x: TW, y: TH }, { x: 0, y: TH }];
+    const dst = [{x:0,y:0},{x:TW,y:0},{x:TW,y:TH},{x:0,y:TH}];
     const H = computeHomography(state.outer, dst);
     if (!H) { setStatus('Degenerate outer quad.'); return; }
     const inner = state.inner.map(p => applyH(H, p));
 
-    // L = avg(inner TL.x, inner BL.x); R = TW - avg(inner TR.x, inner BR.x)
     const L = (inner[0].x + inner[3].x) / 2;
     const R = TW - (inner[1].x + inner[2].x) / 2;
     const T = (inner[0].y + inner[1].y) / 2;
     const B = TH - (inner[2].y + inner[3].y) / 2;
 
-    // Display
     const lrSum = L + R, tbSum = T + B;
     if (lrSum <= 0 || tbSum <= 0) { setStatus('Inner quad outside outer — adjust handles.'); return; }
-    const lPct = Math.round(L / lrSum * 100);
-    const rPct = 100 - lPct;
-    const tPct = Math.round(T / tbSum * 100);
-    const bPct = 100 - tPct;
+    const lPct = Math.round(L / lrSum * 100), rPct = 100 - lPct;
+    const tPct = Math.round(T / tbSum * 100), bPct = 100 - tPct;
     $('lr').textContent = `${lPct} / ${rPct}`;
     $('tb').textContent = `${tPct} / ${bPct}`;
-
     const lmm = (L * CARD_MM_W / TW).toFixed(2);
     const rmm = (R * CARD_MM_W / TW).toFixed(2);
     const tmm = (T * CARD_MM_H / TH).toFixed(2);
@@ -623,14 +895,13 @@
     $('lr-mm').textContent = `${lmm} / ${rmm} mm`;
     $('tb-mm').textContent = `${tmm} / ${bmm} mm`;
 
-    // Grade estimate based on PSA front-centering thresholds
     const worst = Math.max(Math.abs(lPct - 50), Math.abs(tPct - 50));
     let label, cls;
-    if      (worst <=  5) { label = 'Gem Mint 10 (centering)';   cls = 'grade-10'; }
-    else if (worst <= 10) { label = 'Mint 9 (centering)';        cls = 'grade-9'; }
-    else if (worst <= 15) { label = 'NM-MT 8 (centering)';       cls = 'grade-8'; }
-    else if (worst <= 20) { label = 'NM 7 (centering)';          cls = 'grade-7'; }
-    else                  { label = 'Below NM (centering)';      cls = 'grade-low'; }
+    if      (worst <=  5) { label = 'Gem Mint 10 (centering)'; cls = 'grade-10'; }
+    else if (worst <= 10) { label = 'Mint 9 (centering)';      cls = 'grade-9'; }
+    else if (worst <= 15) { label = 'NM-MT 8 (centering)';     cls = 'grade-8'; }
+    else if (worst <= 20) { label = 'NM 7 (centering)';        cls = 'grade-7'; }
+    else                  { label = 'Below NM (centering)';    cls = 'grade-low'; }
     const g = $('grade');
     g.textContent = label;
     g.className = 'grade-badge ' + cls;
@@ -642,17 +913,14 @@
     const cw = warpCanvas.clientWidth || 200;
     const ch = cw * (TH / TW);
     if (warpCanvas.width !== Math.round(cw) || warpCanvas.height !== Math.round(ch)) {
-      warpCanvas.width = Math.round(cw);
-      warpCanvas.height = Math.round(ch);
+      warpCanvas.width = Math.round(cw); warpCanvas.height = Math.round(ch);
     }
     const s = warpCanvas.width / TW;
     wctx.fillStyle = '#0a0a0a';
     wctx.fillRect(0, 0, warpCanvas.width, warpCanvas.height);
-    // outer rect
     wctx.strokeStyle = '#22d3ee';
     wctx.lineWidth = 2;
     wctx.strokeRect(1, 1, warpCanvas.width - 2, warpCanvas.height - 2);
-    // inner quad
     wctx.beginPath();
     innerWarped.forEach((p, i) => {
       if (i === 0) wctx.moveTo(p.x * s, p.y * s);
@@ -661,19 +929,6 @@
     wctx.closePath();
     wctx.strokeStyle = '#facc15';
     wctx.stroke();
-    // L/R/T/B labels at midpoints
-    wctx.fillStyle = '#888';
-    wctx.font = '10px JetBrains Mono, monospace';
-    wctx.textAlign = 'center';
-    wctx.textBaseline = 'middle';
-    const innerL = (innerWarped[0].x + innerWarped[3].x) / 2 * s;
-    const innerR = (innerWarped[1].x + innerWarped[2].x) / 2 * s;
-    const innerT = (innerWarped[0].y + innerWarped[1].y) / 2 * s;
-    const innerB = (innerWarped[2].y + innerWarped[3].y) / 2 * s;
-    wctx.fillText('L', innerL / 2, warpCanvas.height / 2);
-    wctx.fillText('R', (innerR + warpCanvas.width) / 2, warpCanvas.height / 2);
-    wctx.fillText('T', warpCanvas.width / 2, innerT / 2);
-    wctx.fillText('B', warpCanvas.width / 2, (innerB + warpCanvas.height) / 2);
   }
 })();
 </script>
