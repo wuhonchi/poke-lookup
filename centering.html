@@ -56,7 +56,7 @@
       <input type="file" id="file" accept="image/*" class="hidden" />
       Upload
     </label>
-    <button id="auto" class="btn btn-secondary">Auto-detect</button>
+    <button id="auto" class="btn btn-secondary" title="Detect card edge via Roboflow cloud API (uploads downscaled image)">Auto-detect ☁︎</button>
     <button id="rotate" class="btn btn-secondary" title="Rotate 90° clockwise">⟳ Rotate</button>
     <button id="reset-view" class="btn btn-secondary" title="Reset zoom and pan">Fit</button>
     <button id="reset" class="btn btn-secondary" title="Reset handles to defaults">Reset handles</button>
@@ -183,13 +183,20 @@
   const CARD_MM_W = 63, CARD_MM_H = 88;
   const TW = 630, TH = 880;
   const DISPLAY_MAX = 2400;
-  const PROC_MAX = 800;
   const MIN_ZOOM = 0.5, MAX_ZOOM = 16;
   const DPR = window.devicePixelRatio || 1;
 
+  // Roboflow workflow API — server-side pokemon card detection.
+  // Avoids loading 8 MB of OpenCV.js WASM (which crashed iOS Safari on
+  // memory-constrained devices). Note: api_key is visible in client-side
+  // source; for higher-traffic or sensitive deployments, proxy via a
+  // server (e.g. Cloudflare Worker) to hide the key and rate-limit.
+  const ROBOFLOW_ENDPOINT = 'https://serverless.roboflow.com/wu-honchi/workflows/general-segmentation-api';
+  const ROBOFLOW_API_KEY = 'LBhNqcvofrMimAW7cebh';
+  const ROBOFLOW_CLASS = 'pokemon-card';
+  const API_DOWNSCALE_MAX = 1024;
+
   const state = {
-    cv: null,
-    cvLoading: null,
     img: null,
     imgW: 0, imgH: 0,
     canvasW: 0, canvasH: 0,
@@ -695,16 +702,14 @@
   $('auto').addEventListener('click', async () => {
     if (!state.img) { setStatus('Upload an image first.'); return; }
     try {
-      const cv = await loadCV();
-      setStatus('Detecting outer card edge…');
-      await new Promise(r => setTimeout(r, 30));
-      const corners = detectOuter(cv);
+      setStatus('Uploading to Roboflow for card detection…');
+      const corners = await detectOuterRoboflow();
       if (corners) {
         state.outer = corners;
         scheduleDraw();
-        setStatus('Outer detected. Refine cyan handles, then drag yellow handles to inner frame.');
+        setStatus('Outer detected. Refine cyan handles, then drag yellow handles to artwork-start boundary.');
       } else {
-        setStatus('No clean rectangular edge detected. Drag handles manually.');
+        setStatus('Roboflow returned no usable detection. Drag handles manually.');
       }
     } catch (err) {
       console.error(err);
@@ -785,91 +790,61 @@
   ro.observe($('canvas-wrap'));
 
   // ─────────────────────────────────────────────────────────────
-  // OpenCV.js lazy loader
+  // Roboflow workflow-based outer-edge detection (server-side).
+  //
+  // The configured workflow ("general-segmentation-api" with class
+  // "pokemon-card") returns many small polygon fragments concentrated
+  // along the card outline. We aggregate every point from every
+  // detection above a confidence threshold, then pick the 4 extreme
+  // corners via orderCorners() (min/max of x±y → TL/TR/BR/BL).
+  //
+  // This is an axis-aligned bounding-box approximation; for cards
+  // that are clearly rotated in the photo, the user should hit
+  // ⟳ Rotate first or refine handles manually.
   // ─────────────────────────────────────────────────────────────
-  function loadCV() {
-    if (state.cv) return Promise.resolve(state.cv);
-    if (state.cvLoading) return state.cvLoading;
-
-    const TIMEOUT_MS = 120000;
-    const t0 = Date.now();
-    const tick = () => setStatus(`Loading OpenCV.js… ${((Date.now()-t0)/1000).toFixed(0)}s elapsed (first time only, ~8 MB)`);
-    tick();
-    const statusTimer = setInterval(tick, 1000);
-
-    state.cvLoading = new Promise((resolve, reject) => {
-      let pollTimer = null, timeoutTimer = null;
-      const cleanup = () => {
-        clearInterval(statusTimer);
-        if (pollTimer) clearInterval(pollTimer);
-        if (timeoutTimer) clearTimeout(timeoutTimer);
-      };
-      const done = () => { cleanup(); state.cv = window.cv; setStatus('OpenCV.js ready.'); resolve(window.cv); };
-      const fail = msg => { cleanup(); state.cvLoading = null; reject(new Error(msg)); };
-
-      timeoutTimer = setTimeout(() => fail('OpenCV.js load timed out after 2 min.'), TIMEOUT_MS);
-      pollTimer = setInterval(() => {
-        if (window.cv && typeof window.cv.Mat === 'function') done();
-      }, 200);
-
-      const s = document.createElement('script');
-      s.src = 'https://docs.opencv.org/4.10.0/opencv.js';
-      s.async = true;
-      s.onerror = () => fail('Failed to fetch OpenCV.js (network blocked or CDN down).');
-      s.onload = () => {
-        if (window.cv && typeof window.cv.Mat === 'function') { done(); return; }
-        if (window.cv) { try { window.cv['onRuntimeInitialized'] = done; } catch (_) {} }
-      };
-      document.head.appendChild(s);
-    });
-    return state.cvLoading;
-  }
-
-  function detectOuter(cv) {
-    const r = PROC_MAX / Math.max(state.imgW, state.imgH);
-    const pw = Math.round(state.imgW * r);
-    const ph = Math.round(state.imgH * r);
+  async function detectOuterRoboflow() {
+    if (!state.img) return null;
+    // Downscale for API to keep upload payload small (~200 KB JPEG base64).
+    const r = Math.min(1, API_DOWNSCALE_MAX / Math.max(state.imgW, state.imgH));
+    const pw = Math.max(1, Math.round(state.imgW * r));
+    const ph = Math.max(1, Math.round(state.imgH * r));
     const tmp = document.createElement('canvas');
     tmp.width = pw; tmp.height = ph;
-    tmp.getContext('2d').drawImage(state.img, 0, 0, pw, ph);
-    const src = cv.imread(tmp);
-    const gray = new cv.Mat();
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
-    const edges = new cv.Mat();
-    cv.Canny(gray, edges, 50, 150);
-    const k = cv.Mat.ones(3, 3, cv.CV_8U);
-    cv.dilate(edges, edges, k);
-    const contours = new cv.MatVector();
-    const hier = new cv.Mat();
-    cv.findContours(edges, contours, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-    let best = null, bestArea = 0;
-    const imgArea = pw * ph;
-    for (let i = 0; i < contours.size(); i++) {
-      const c = contours.get(i);
-      const area = cv.contourArea(c);
-      if (area < imgArea * 0.15) { c.delete(); continue; }
-      const peri = cv.arcLength(c, true);
-      const approx = new cv.Mat();
-      cv.approxPolyDP(c, approx, peri * 0.02, true);
-      if (approx.rows === 4 && area > bestArea) {
-        bestArea = area;
-        if (best) best.delete();
-        best = approx.clone();
+    const tctx = tmp.getContext('2d');
+    tctx.imageSmoothingEnabled = true;
+    tctx.imageSmoothingQuality = 'high';
+    tctx.drawImage(state.img, 0, 0, pw, ph);
+    const base64 = tmp.toDataURL('image/jpeg', 0.9).split(',')[1];
+
+    const response = await fetch(ROBOFLOW_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: ROBOFLOW_API_KEY,
+        inputs: {
+          image: { type: 'base64', value: base64 },
+          classes: ROBOFLOW_CLASS,
+        },
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Roboflow API ${response.status}`);
+    }
+    const data = await response.json();
+    const preds = data?.outputs?.[0]?.predictions?.predictions || [];
+    if (preds.length === 0) return null;
+
+    const allPts = [];
+    preds.forEach(p => {
+      if (p.class === ROBOFLOW_CLASS && (p.confidence ?? 0) > 0.4 && Array.isArray(p.points)) {
+        p.points.forEach(pt => allPts.push({ x: pt.x, y: pt.y }));
       }
-      approx.delete();
-      c.delete();
-    }
-    let corners = null;
-    if (best) {
-      const raw = [];
-      for (let i = 0; i < 4; i++) raw.push({ x: best.data32S[i*2] / r, y: best.data32S[i*2+1] / r });
-      corners = orderCorners(raw);
-      best.delete();
-    }
-    src.delete(); gray.delete(); edges.delete(); k.delete();
-    contours.delete(); hier.delete();
-    return corners;
+    });
+    if (allPts.length < 4) return null;
+
+    // Pick 4 extreme corners and scale API coords → source image coords.
+    const corners = orderCorners(allPts);
+    return corners.map(p => ({ x: p.x / r, y: p.y / r }));
   }
 
   function orderCorners(pts) {
