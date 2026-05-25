@@ -186,13 +186,15 @@
   const MIN_ZOOM = 0.5, MAX_ZOOM = 16;
   const DPR = window.devicePixelRatio || 1;
 
-  // Roboflow workflow API — server-side pokemon card detection.
-  // Avoids loading 8 MB of OpenCV.js WASM (which crashed iOS Safari on
-  // memory-constrained devices). Note: api_key is visible in client-side
-  // source; for higher-traffic or sensitive deployments, proxy via a
-  // server (e.g. Cloudflare Worker) to hide the key and rate-limit.
-  const ROBOFLOW_ENDPOINT = 'https://serverless.roboflow.com/wu-honchi/workflows/general-segmentation-api';
-  const ROBOFLOW_API_KEY = 'LBhNqcvofrMimAW7cebh';
+  // Card detection routed through a Cloudflare Worker that proxies to a
+  // Roboflow "general-segmentation-api" workflow. The Worker:
+  //   1. adds proper CORS headers (the Roboflow OPTIONS preflight is
+  //      missing Access-Control-Allow-Origin, blocking direct browser
+  //      calls)
+  //   2. injects the api_key from a server-side env secret so it's
+  //      never exposed in this client-side source
+  // Avoids 8 MB OpenCV.js WASM that crashed iOS Safari.
+  const ROBOFLOW_ENDPOINT = 'https://poke-center-proxy.wuhonchi.workers.dev/';
   const ROBOFLOW_CLASS = 'pokemon-card';
   const API_DOWNSCALE_MAX = 1024;
 
@@ -816,11 +818,11 @@
     tctx.drawImage(state.img, 0, 0, pw, ph);
     const base64 = tmp.toDataURL('image/jpeg', 0.9).split(',')[1];
 
+    // api_key is injected server-side by the Cloudflare Worker proxy.
     const response = await fetch(ROBOFLOW_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        api_key: ROBOFLOW_API_KEY,
         inputs: {
           image: { type: 'base64', value: base64 },
           classes: ROBOFLOW_CLASS,
