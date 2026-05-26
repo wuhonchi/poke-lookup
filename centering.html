@@ -56,15 +56,9 @@
       <input type="file" id="file" accept="image/*" class="hidden" />
       Upload
     </label>
-    <label class="btn btn-primary cursor-pointer" title="Open device camera (uses native camera app on mobile — full sensor resolution)">
-      <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden" />
-      📷 Camera
-    </label>
-    <button id="auto" class="btn btn-secondary" title="Detect card edge via Roboflow cloud API (uploads downscaled image)">Auto-detect ☁︎</button>
     <button id="rotate" class="btn btn-secondary" title="Rotate 90° clockwise">⟳ Rotate</button>
     <button id="filter-toggle" class="btn btn-secondary" title="Cycle image filter (display only — doesn't change measurements)">Filter: <span id="filter-label">Normal</span></button>
     <button id="reset-view" class="btn btn-secondary" title="Reset zoom and pan">Fit</button>
-    <button id="reset" class="btn btn-secondary" title="Reset handles to defaults">Reset handles</button>
     <span class="zoom-badge mono"><span id="zoom-display">100%</span></span>
     <span class="text-[11px] text-gray-500 hidden md:inline">
       <span class="legend-dot" style="background:#22d3ee"></span>outer
@@ -175,8 +169,7 @@
           <li>Card is assumed flat. Bent cards give wrong mm offsets.</li>
           <li>Card dimensions assumed 63 × 88 mm.</li>
           <li>Best capture: dark matte background, no flash, even diffused light, phone parallel to card, full card with margin, sleeves removed. <strong>Lens choice matters</strong>: prefer 2× / telephoto if your phone has one. Ultra-wide adds barrel distortion that bends straight card edges and biases L/R borders ~0.1-0.2 mm.</li>
-          <li>The <strong>📷 Camera</strong> button opens your native camera app on mobile — gives full sensor resolution (12 MP+) instead of the lower-res webcam stream a web page can access directly.</li>
-          <li>Handles auto-<strong>lock after 3 s</strong> of no movement to prevent the tiny release-nudge. Lift and tap again to resume. Green ring = locked.</li>
+          <li>Handles auto-<strong>lock after 2 s</strong> of no movement to prevent the tiny release-nudge. A countdown ring in the center of the canvas shows remaining hold time. Lift and tap again to resume; green ring = locked.</li>
         </ul>
       </details>
     </aside>
@@ -193,10 +186,11 @@
   const MIN_ZOOM = 0.5, MAX_ZOOM = 16;
   const DPR = window.devicePixelRatio || 1;
 
-  // Handle auto-lock: 3 s of no pointer movement during a drag locks
+  // Handle auto-lock: 2 s of no pointer movement during a drag locks
   // the handle, preventing the tiny release nudge from shifting it.
-  // User lifts finger and taps again to resume.
-  const HANDLE_LOCK_MS = 3000;
+  // User lifts finger and taps again to resume. A countdown overlay
+  // renders in the centre of the canvas while a handle is held.
+  const HANDLE_LOCK_MS = 2000;
 
   // Display-only image filters. Applied to drawImage() of the photo;
   // overlays (handles, quads, detection dots) are drawn AFTER the
@@ -211,23 +205,12 @@
     { label: 'Invert HC', css: 'invert(1) contrast(1.8)' },
   ];
 
-  // Card detection routed through a Cloudflare Worker that proxies to a
-  // Roboflow "general-segmentation-api" workflow. The Worker:
-  //   1. adds proper CORS headers (the Roboflow OPTIONS preflight is
-  //      missing Access-Control-Allow-Origin, blocking direct browser
-  //      calls)
-  //   2. injects the api_key from a server-side env secret so it's
-  //      never exposed in this client-side source
-  // Avoids 8 MB OpenCV.js WASM that crashed iOS Safari.
-  const ROBOFLOW_ENDPOINT = 'https://poke-center-proxy.wuhonchi.workers.dev/';
-  const ROBOFLOW_CLASS = 'pokemon-card';
-  const API_DOWNSCALE_MAX = 1024;
-
   const state = {
-    detectedPts: null,   // last Roboflow detection points (in source image coords) — for debug overlay
-    lockTimer: null,     // setTimeout handle for handle auto-lock after idle
-    lockedHandle: null,  // {set, idx} of most recently auto-locked handle (for visual ring)
-    filterIdx: 0,        // index into FILTER_MODES — display-only image filter
+    lockTimer: null,        // setTimeout handle for handle auto-lock after idle
+    lockTimerStart: 0,      // performance.now() when current lock countdown started
+    lockedHandle: null,     // {set, idx} of most recently auto-locked handle (for visual ring)
+    countdownLoopId: null,  // requestAnimationFrame id for the countdown overlay loop
+    filterIdx: 0,           // index into FILTER_MODES — display-only image filter
     img: null,
     imgW: 0, imgH: 0,
     canvasW: 0, canvasH: 0,
@@ -416,28 +399,13 @@
     ctx.filter = 'none';
 
     octx.clearRect(0, 0, state.canvasW, state.canvasH);
-    if (state.detectedPts) drawDetectionDots(state.detectedPts);
     drawQuad(state.outer, '#22d3ee');
     drawQuad(state.inner, '#facc15');
     drawHandles(state.outer, '#22d3ee', 'outer');
     drawHandles(state.inner, '#facc15', 'inner');
+    drawCountdown();
 
     drawMinimap();
-  }
-
-  // Draw Roboflow polygon points as faint dots so user can see exactly
-  // what was detected. If dots cluster on the card → detection is sane.
-  // If they're scattered → corner placement will be off; use manual.
-  function drawDetectionDots(pts) {
-    octx.save();
-    octx.fillStyle = 'rgba(192, 132, 252, 0.55)';
-    pts.forEach(p => {
-      const cp = imageToCanvas(p);
-      octx.beginPath();
-      octx.arc(cp.x, cp.y, 1.5, 0, Math.PI * 2);
-      octx.fill();
-    });
-    octx.restore();
   }
 
   function drawQuad(pts, color) {
@@ -599,18 +567,83 @@
 
   function startLockTimer() {
     if (state.lockTimer) clearTimeout(state.lockTimer);
+    state.lockTimerStart = performance.now();
     state.lockTimer = setTimeout(() => {
       if (state.drag && state.drag.mode === 'handle') {
         state.lockedHandle = { set: state.drag.set, idx: state.drag.idx };
         state.drag = null;
-        setStatus('Handle locked (idle ≥ 3 s). Lift finger and tap again to move it.');
+        setStatus('Handle locked. Lift finger and tap again to move it.');
         scheduleDraw();
       }
       state.lockTimer = null;
     }, HANDLE_LOCK_MS);
+    startCountdownLoop();
   }
   function clearLockTimer() {
     if (state.lockTimer) { clearTimeout(state.lockTimer); state.lockTimer = null; }
+    stopCountdownLoop();
+  }
+
+  // While a handle is being held, keep redrawing every frame so the
+  // countdown overlay animates smoothly. The loop self-stops as soon
+  // as the drag ends or the lock timer fires.
+  function startCountdownLoop() {
+    if (state.countdownLoopId) return;
+    const tick = () => {
+      if (state.drag && state.drag.mode === 'handle' && state.lockTimer) {
+        draw();
+        state.countdownLoopId = requestAnimationFrame(tick);
+      } else {
+        state.countdownLoopId = null;
+      }
+    };
+    state.countdownLoopId = requestAnimationFrame(tick);
+  }
+  function stopCountdownLoop() {
+    if (state.countdownLoopId) {
+      cancelAnimationFrame(state.countdownLoopId);
+      state.countdownLoopId = null;
+    }
+  }
+
+  // Centered hold-to-lock countdown ring + numeric remaining time.
+  // Drawn on the overlay canvas after the photo + filter pass.
+  function drawCountdown() {
+    if (!state.drag || state.drag.mode !== 'handle' || !state.lockTimer) return;
+    const elapsed = performance.now() - state.lockTimerStart;
+    const remaining = Math.max(0, (HANDLE_LOCK_MS - elapsed) / 1000);
+    const fraction = Math.min(1, elapsed / HANDLE_LOCK_MS);
+    const cx = state.canvasW / 2;
+    const cy = state.canvasH / 2;
+    const r = 38;
+    // Dim disc background
+    octx.beginPath();
+    octx.arc(cx, cy, r + 8, 0, Math.PI * 2);
+    octx.fillStyle = 'rgba(0, 0, 0, 0.62)';
+    octx.fill();
+    // Track ring (unfilled)
+    octx.beginPath();
+    octx.arc(cx, cy, r, 0, Math.PI * 2);
+    octx.strokeStyle = 'rgba(255, 255, 255, 0.20)';
+    octx.lineWidth = 4;
+    octx.stroke();
+    // Progress ring (filled fraction of elapsed time, starts at 12 o'clock)
+    octx.beginPath();
+    octx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + fraction * Math.PI * 2);
+    octx.strokeStyle = '#facc15';
+    octx.lineWidth = 4;
+    octx.lineCap = 'round';
+    octx.stroke();
+    // Remaining seconds (large)
+    octx.font = 'bold 22px "JetBrains Mono", monospace';
+    octx.textAlign = 'center';
+    octx.textBaseline = 'middle';
+    octx.fillStyle = '#facc15';
+    octx.fillText(remaining.toFixed(1) + 's', cx, cy - 3);
+    // Hint label (small)
+    octx.font = '10px sans-serif';
+    octx.fillStyle = '#d1d5db';
+    octx.fillText('hold → lock', cx, cy + 16);
   }
 
   overlayCanvas.addEventListener('pointerdown', e => {
@@ -789,37 +822,12 @@
     $('filter-label').textContent = FILTER_MODES[state.filterIdx].label;
     if (state.img) scheduleDraw();
   });
-  $('reset').addEventListener('click', () => {
-    if (!state.img) return;
-    resetHandles();
-    scheduleDraw();
-  });
-
-  $('auto').addEventListener('click', async () => {
-    if (!state.img) { setStatus('Upload an image first.'); return; }
-    try {
-      setStatus('Uploading to Roboflow for card detection…');
-      const corners = await detectOuterRoboflow();
-      if (corners) {
-        state.outer = corners;
-        scheduleDraw();
-        setStatus('Outer detected. Refine cyan handles, then drag yellow handles to artwork-start boundary.');
-      } else {
-        setStatus('Roboflow returned no usable detection. Drag handles manually.');
-      }
-    } catch (err) {
-      console.error(err);
-      setStatus('Auto-detect failed: ' + err.message);
-    }
-  });
-
   // ─────────────────────────────────────────────────────────────
   // File upload
   // ─────────────────────────────────────────────────────────────
-  // Wire both Upload and Camera inputs to the same handler.
-  // The Camera input adds capture="environment" so on mobile the OS
-  // opens the native camera app at full sensor resolution; on desktop
-  // it falls back to a file picker.
+  // Wire the Upload input to the loader. On mobile the OS file picker
+  // generally offers a "Take Photo" option, so a dedicated camera
+  // shortcut button is no longer needed.
   async function handleImageFile(e) {
     const f = e.target.files[0];
     if (!f) return;
@@ -850,7 +858,6 @@
       }
       state.imgW = w;
       state.imgH = h;
-      state.detectedPts = null;     // clear stale detection from previous image
       state.lockedHandle = null;    // clear stale lock visual
       clearLockTimer();
       state.view.rot = 0;
@@ -872,7 +879,6 @@
     e.target.value = '';
   }
   $('file').addEventListener('change', handleImageFile);
-  $('camera-input').addEventListener('change', handleImageFile);
 
   function resetHandles() {
     const w = state.imgW, h = state.imgH;
@@ -900,133 +906,6 @@
     }
   });
   ro.observe($('canvas-wrap'));
-
-  // ─────────────────────────────────────────────────────────────
-  // Roboflow workflow-based outer-edge detection (server-side).
-  //
-  // The configured workflow ("general-segmentation-api" with class
-  // "pokemon-card") returns many small polygon fragments concentrated
-  // along the card outline. We aggregate every point from every
-  // detection above a confidence threshold, then pick the 4 extreme
-  // corners via orderCorners() (min/max of x±y → TL/TR/BR/BL).
-  //
-  // This is an axis-aligned bounding-box approximation; for cards
-  // that are clearly rotated in the photo, the user should hit
-  // ⟳ Rotate first or refine handles manually.
-  // ─────────────────────────────────────────────────────────────
-  async function detectOuterRoboflow() {
-    if (!state.img) return null;
-    // Downscale for API to keep upload payload small (~200 KB JPEG base64).
-    const r = Math.min(1, API_DOWNSCALE_MAX / Math.max(state.imgW, state.imgH));
-    const pw = Math.max(1, Math.round(state.imgW * r));
-    const ph = Math.max(1, Math.round(state.imgH * r));
-    const tmp = document.createElement('canvas');
-    tmp.width = pw; tmp.height = ph;
-    const tctx = tmp.getContext('2d');
-    tctx.imageSmoothingEnabled = true;
-    tctx.imageSmoothingQuality = 'high';
-    tctx.drawImage(state.img, 0, 0, pw, ph);
-    const base64 = tmp.toDataURL('image/jpeg', 0.9).split(',')[1];
-
-    // api_key is injected server-side by the Cloudflare Worker proxy.
-    const response = await fetch(ROBOFLOW_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        inputs: {
-          image: { type: 'base64', value: base64 },
-          classes: ROBOFLOW_CLASS,
-        },
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(`Roboflow API ${response.status}`);
-    }
-    const data = await response.json();
-    const preds = data?.outputs?.[0]?.predictions?.predictions || [];
-    if (preds.length === 0) return null;
-
-    const allPts = [];
-    preds.forEach(p => {
-      if (p.class === ROBOFLOW_CLASS && (p.confidence ?? 0) > 0.4 && Array.isArray(p.points)) {
-        p.points.forEach(pt => allPts.push({ x: pt.x, y: pt.y }));
-      }
-    });
-    if (allPts.length < 4) return null;
-
-    // Spatial clustering: the workflow returns many small polygon
-    // fragments along edges. If a second card / background object is in
-    // the photo, its fragments form a separate cluster from the main
-    // card's. Pick the largest cluster only — drops noise / second-card.
-    const imgMax = Math.max(pw, ph);
-    const clusterDist = Math.max(40, imgMax * 0.06);
-    const dominant = largestCluster(allPts, clusterDist);
-
-    // Store for debug overlay (scaled back to source image coords).
-    state.detectedPts = dominant.map(p => ({ x: p.x / r, y: p.y / r }));
-
-    if (dominant.length < 4) return null;
-    const corners = orderCorners(dominant);
-    return corners.map(p => ({ x: p.x / r, y: p.y / r }));
-  }
-
-  // Union-Find clustering. Two points are connected if within `dist`.
-  // Returns the largest connected component. Uses spatial bins so the
-  // pairing check is O(n) instead of O(n²).
-  function largestCluster(pts, dist) {
-    const n = pts.length;
-    if (n === 0) return [];
-    const parent = new Array(n);
-    for (let i = 0; i < n; i++) parent[i] = i;
-    const find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
-    const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[ra] = rb; };
-
-    const bins = new Map();
-    const binKey = (bx, by) => bx + ',' + by;
-    for (let i = 0; i < n; i++) {
-      const bx = Math.floor(pts[i].x / dist);
-      const by = Math.floor(pts[i].y / dist);
-      const k = binKey(bx, by);
-      let arr = bins.get(k);
-      if (!arr) { arr = []; bins.set(k, arr); }
-      arr.push(i);
-    }
-
-    const d2 = dist * dist;
-    for (let i = 0; i < n; i++) {
-      const px = pts[i].x, py = pts[i].y;
-      const bx = Math.floor(px / dist), by = Math.floor(py / dist);
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          const arr = bins.get(binKey(bx + dx, by + dy));
-          if (!arr) continue;
-          for (const j of arr) {
-            if (j <= i) continue;
-            const ddx = pts[j].x - px, ddy = pts[j].y - py;
-            if (ddx * ddx + ddy * ddy <= d2) union(i, j);
-          }
-        }
-      }
-    }
-
-    const counts = new Map();
-    for (let i = 0; i < n; i++) {
-      const r = find(i);
-      counts.set(r, (counts.get(r) || 0) + 1);
-    }
-    let bestRoot = -1, bestCount = 0;
-    counts.forEach((c, r) => { if (c > bestCount) { bestCount = c; bestRoot = r; } });
-    return pts.filter((_, i) => find(i) === bestRoot);
-  }
-
-  function orderCorners(pts) {
-    const sum = pts.map(p => p.x + p.y);
-    const diff = pts.map(p => p.y - p.x);
-    const iMin = a => a.indexOf(Math.min(...a));
-    const iMax = a => a.indexOf(Math.max(...a));
-    const tl = pts[iMin(sum)], br = pts[iMax(sum)], tr = pts[iMin(diff)], bl = pts[iMax(diff)];
-    return [{x:tl.x,y:tl.y},{x:tr.x,y:tr.y},{x:br.x,y:br.y},{x:bl.x,y:bl.y}];
-  }
 
   // ─────────────────────────────────────────────────────────────
   // Homography (pure JS, 8x8 Gaussian elimination)
