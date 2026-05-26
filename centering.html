@@ -62,6 +62,7 @@
     </label>
     <button id="auto" class="btn btn-secondary" title="Detect card edge via Roboflow cloud API (uploads downscaled image)">Auto-detect ☁︎</button>
     <button id="rotate" class="btn btn-secondary" title="Rotate 90° clockwise">⟳ Rotate</button>
+    <button id="filter-toggle" class="btn btn-secondary" title="Cycle image filter (display only — doesn't change measurements)">Filter: <span id="filter-label">Normal</span></button>
     <button id="reset-view" class="btn btn-secondary" title="Reset zoom and pan">Fit</button>
     <button id="reset" class="btn btn-secondary" title="Reset handles to defaults">Reset handles</button>
     <span class="zoom-badge mono"><span id="zoom-display">100%</span></span>
@@ -197,6 +198,19 @@
   // User lifts finger and taps again to resume.
   const HANDLE_LOCK_MS = 3000;
 
+  // Display-only image filters. Applied to drawImage() of the photo;
+  // overlays (handles, quads, detection dots) are drawn AFTER the
+  // filter is reset to 'none' so their colors are not affected.
+  // Codex review note: filters can amplify glare/shadow/JPEG block
+  // artifacts into false edges — toggle off if a filter looks misleading.
+  const FILTER_MODES = [
+    { label: 'Normal',    css: 'none' },
+    { label: 'B/W',       css: 'grayscale(1)' },
+    { label: 'B/W HiCon', css: 'grayscale(1) contrast(2)' },
+    { label: 'Invert',    css: 'invert(1)' },
+    { label: 'Invert HC', css: 'invert(1) contrast(1.8)' },
+  ];
+
   // Card detection routed through a Cloudflare Worker that proxies to a
   // Roboflow "general-segmentation-api" workflow. The Worker:
   //   1. adds proper CORS headers (the Roboflow OPTIONS preflight is
@@ -213,6 +227,7 @@
     detectedPts: null,   // last Roboflow detection points (in source image coords) — for debug overlay
     lockTimer: null,     // setTimeout handle for handle auto-lock after idle
     lockedHandle: null,  // {set, idx} of most recently auto-locked handle (for visual ring)
+    filterIdx: 0,        // index into FILTER_MODES — display-only image filter
     img: null,
     imgW: 0, imgH: 0,
     canvasW: 0, canvasH: 0,
@@ -392,9 +407,13 @@
     const viewH = state.canvasH / v.scaleFinal;
     ctx.fillStyle = '#0a0a0a';
     ctx.fillRect(0, 0, state.canvasW, state.canvasH);
+    // Apply display-only filter to the photo. Reset before overlay
+    // drawing so handles/quads keep their true colors.
+    ctx.filter = FILTER_MODES[state.filterIdx].css;
     ctx.drawImage(v.rotatedSrc,
       v.offsetX, v.offsetY, viewW, viewH,
       0, 0, state.canvasW, state.canvasH);
+    ctx.filter = 'none';
 
     octx.clearRect(0, 0, state.canvasW, state.canvasH);
     if (state.detectedPts) drawDetectionDots(state.detectedPts);
@@ -488,7 +507,11 @@
 
     mctx.fillStyle = '#0a0a0a';
     mctx.fillRect(0, 0, mw, mh);
+    // Apply same filter as main canvas so the minimap stays consistent
+    // with what the user sees in the main view.
+    mctx.filter = FILTER_MODES[state.filterIdx].css;
     mctx.drawImage(v.rotatedSrc, ox, oy, drawW, drawH);
+    mctx.filter = 'none';
 
     const drawQ = (pts, color) => {
       if (!pts) return;
@@ -759,6 +782,13 @@
 
   $('rotate').addEventListener('click', doRotate);
   $('reset-view').addEventListener('click', () => { if (state.img) resetView(); });
+
+  // Cycle image filter (display only — measurements unaffected).
+  $('filter-toggle').addEventListener('click', () => {
+    state.filterIdx = (state.filterIdx + 1) % FILTER_MODES.length;
+    $('filter-label').textContent = FILTER_MODES[state.filterIdx].label;
+    if (state.img) scheduleDraw();
+  });
   $('reset').addEventListener('click', () => {
     if (!state.img) return;
     resetHandles();
