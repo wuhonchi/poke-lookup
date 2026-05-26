@@ -175,7 +175,7 @@
           <li>Card is assumed flat. Bent cards give wrong mm offsets.</li>
           <li>Card dimensions assumed 63 × 88 mm.</li>
           <li>Best capture: dark matte background, no flash, even diffused light, phone parallel to card, full card with margin, sleeves removed. <strong>Lens choice matters</strong>: prefer 2× / telephoto if your phone has one. Ultra-wide adds barrel distortion that bends straight card edges and biases L/R borders ~0.1-0.2 mm.</li>
-          <li>Handles auto-<strong>lock after 2 s</strong> of no movement to prevent the tiny release-nudge. A countdown ring in the center of the canvas shows remaining hold time. Lift and tap again to resume; green ring = locked.</li>
+          <li>Handles auto-<strong>lock after 1 s</strong> of no movement to prevent the tiny release-nudge. A countdown ring in the center of the canvas shows remaining hold time. Lift and tap again to resume; green ring = locked.</li>
         </ul>
       </details>
     </aside>
@@ -194,11 +194,11 @@
   const MIN_ZOOM = 0.5, MAX_ZOOM = 16;
   const DPR = window.devicePixelRatio || 1;
 
-  // Handle auto-lock: 2 s of no pointer movement during a drag locks
+  // Handle auto-lock: 1 s of no pointer movement during a drag locks
   // the handle, preventing the tiny release nudge from shifting it.
   // User lifts finger and taps again to resume. A countdown overlay
   // renders in the centre of the canvas while a handle is held.
-  const HANDLE_LOCK_MS = 2000;
+  const HANDLE_LOCK_MS = 1000;
 
   // Display-only image filters. Applied to drawImage() of the photo;
   // overlays (handles, quads, detection dots) are drawn AFTER the
@@ -1005,12 +1005,26 @@
 
   function compute() {
     if (!state.outer || !state.inner || !state.img) return;
-    const frame = pickFrame(state.outer);
+
+    // Permute slot order so [0,1,2,3] matches the CURRENT VISUAL view
+    // [TL, TR, BR, BL] after any ⟳ rotation. Without this, after rot=90
+    // /180/270 the displayed L/R/T/B labels don't match what the user
+    // sees on screen (they get swapped or upside-down).
+    // shift = (4 - rot/90) % 4 maps "visual TL" to slot 0; derived
+    // from the imageToRotated() table for our rotation convention.
+    // state.outer / state.inner are NOT mutated — the permutation is
+    // local to this measurement so handle positions stay stable.
+    const k = (((state.view.rot || 0) % 360) / 90) | 0;
+    const shift = (4 - k) % 4;
+    const viewOuter = [0,1,2,3].map(i => state.outer[(i + shift) % 4]);
+    const viewInner = [0,1,2,3].map(i => state.inner[(i + shift) % 4]);
+
+    const frame = pickFrame(viewOuter);
     const { TW, TH, wMm, hMm, landscape, confidence } = frame;
     const dst = [{x:0,y:0},{x:TW,y:0},{x:TW,y:TH},{x:0,y:TH}];
-    const H = computeHomography(state.outer, dst);
+    const H = computeHomography(viewOuter, dst);
     if (!H) { setStatus('Degenerate outer quad.'); return; }
-    const inner = state.inner.map(p => applyH(H, p));
+    const inner = viewInner.map(p => applyH(H, p));
 
     const L = (inner[0].x + inner[3].x) / 2;
     const R = TW - (inner[1].x + inner[2].x) / 2;
