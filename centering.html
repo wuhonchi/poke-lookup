@@ -3,11 +3,23 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-<title>POKÉ / CENTER — Centering analyzer</title>
+<title>CardJeng — Trading card centering analyzer</title>
+<meta name="description" content="Free trading card centering analyzer. Measure L/R and T/B border ratios from a phone photo. Estimates only — not affiliated with PSA, BGS, or CGC." />
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=JetBrains+Mono:wght@400;700&family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+
+<!-- Cloudflare Web Analytics — paste your token after deployment.
+     Privacy-friendly, cookieless, GDPR-compliant. Free unlimited tier.
+<script defer src='https://static.cloudflareinsights.com/beacon.min.js'
+        data-cf-beacon='{"token": "YOUR_CF_ANALYTICS_TOKEN"}'></script>
+-->
+
+<!-- Open Graph / preview metadata -->
+<meta property="og:title" content="CardJeng — Centering analyzer" />
+<meta property="og:description" content="Drop a card photo, drag the handles, get a centering ratio. Free, browser-only, no upload." />
+<meta property="og:type" content="website" />
 <style>
   body { background: #0a0a0a; color: #eee; font-family: 'Manrope', system-ui, sans-serif; margin: 0; overscroll-behavior: none; }
   .display { font-family: 'Bowlby One', sans-serif; letter-spacing: -0.03em; }
@@ -37,20 +49,20 @@
 <body class="min-h-screen">
 
 <div class="max-w-7xl mx-auto p-3 lg:p-6">
-  <header class="mb-4 flex items-start justify-between gap-4">
-    <div>
-      <h1 class="display text-2xl lg:text-4xl">POKÉ / CENTER</h1>
-      <p class="text-xs lg:text-sm text-gray-400 mt-1 max-w-3xl">
-        Upload a near-top-down photo. Drag the
-        <strong>outer</strong> handles to the
-        <span class="font-semibold">physical card edge</span> and the
-        <strong>inner</strong> handles to the
-        <span class="font-semibold">artwork-start boundary</span> (where colored border meets central art — not the outer edge of the colored band). Use the <strong>Colors</strong> toggle if the handles blend with a filter.
-        <span class="hidden lg:inline">Pinch / wheel = zoom. Drag empty area = pan. Arrow keys nudge selected handle 1 px (Shift = 10 px).</span>
-        <span class="lg:hidden">Pinch to zoom. Drag empty area to pan.</span>
-      </p>
+  <header class="mb-4">
+    <div class="flex items-baseline gap-3 flex-wrap">
+      <h1 class="display text-2xl lg:text-4xl">CardJeng</h1>
+      <p class="mono text-[10px] lg:text-xs text-gray-500 uppercase tracking-[0.2em]">centering analyzer</p>
     </div>
-    <a href="index.html" class="mono text-[11px] text-gray-500 hover:text-yellow-400 whitespace-nowrap shrink-0 mt-2">← POKÉ / FIND</a>
+    <p class="text-xs lg:text-sm text-gray-400 mt-2 max-w-3xl">
+      Upload a near-top-down photo of a trading card. Drag the
+      <strong>outer</strong> handles to the
+      <span class="font-semibold">physical card edge</span> and the
+      <strong>inner</strong> handles to the
+      <span class="font-semibold">artwork-start boundary</span> (where the colored border meets the central art — not the outer edge of the colored band). Use the <strong>Colors</strong> toggle if the handles blend with a filter.
+      <span class="hidden lg:inline">Pinch / wheel = zoom. Drag empty area = pan. Arrow keys nudge selected handle 1 px (Shift = 10 px).</span>
+      <span class="lg:hidden">Pinch to zoom. Drag empty area to pan.</span>
+    </p>
   </header>
 
   <div class="flex flex-wrap gap-2 mb-3 items-center">
@@ -1130,5 +1142,79 @@
   }
 })();
 </script>
+
+<!-- ────────── Footer ────────── -->
+<footer class="max-w-7xl mx-auto px-4 lg:px-6 py-8 mt-12 border-t border-zinc-900 text-xs text-gray-500 space-y-5">
+
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+    <strong class="text-gray-300 mono uppercase tracking-wider">CardJeng</strong>
+    <span class="text-gray-700">·</span>
+    <span>© 2026 CardJeng. All rights reserved.</span>
+  </div>
+
+  <div class="space-y-1.5 leading-relaxed max-w-3xl">
+    <p><strong class="text-gray-400">Estimates only.</strong> This tool provides centering estimates from photos and is <strong>not affiliated with or endorsed by</strong> PSA, BGS, CGC, The Pokémon Company, Wizards of the Coast, or any card publisher or grading service.</p>
+    <p><strong class="text-gray-400">Privacy.</strong> Images are processed entirely in your browser. No image data is uploaded to any server by this tool.</p>
+    <p><strong class="text-gray-400">Disclosure.</strong> Some buttons below are paid affiliate links. We may earn a commission if you purchase through them, at no extra cost to you. Each affiliate button is labeled <em>(paid link)</em>.</p>
+  </div>
+
+  <!-- ────────── Affiliate buttons (PLACEHOLDERS — fill href after approval) ────────── -->
+  <div class="pt-2">
+    <p class="text-[10px] uppercase tracking-wider text-gray-600 mb-2">If this helped you decide on a grade:</p>
+    <div class="flex flex-wrap gap-2">
+      <a href="#REPLACE_WITH_TCGPLAYER_AFFILIATE_URL" target="_blank" rel="sponsored nofollow noopener"
+         class="btn btn-secondary text-xs">
+        Search on TCGplayer <span class="text-gray-500">(paid link)</span>
+      </a>
+      <a href="#REPLACE_WITH_EBAY_AFFILIATE_URL" target="_blank" rel="sponsored nofollow noopener"
+         class="btn btn-secondary text-xs">
+        Browse comps on eBay <span class="text-gray-500">(paid link)</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- ────────── Support + Feedback ────────── -->
+  <div class="flex flex-wrap items-center gap-3 pt-2">
+    <a href="#REPLACE_WITH_KOFI_URL" target="_blank" rel="noopener"
+       class="btn btn-secondary text-xs hover:bg-pink-950">
+      ☕ Support on Ko-fi
+    </a>
+    <a href="#REPLACE_WITH_TALLY_OR_GOOGLE_FORM_URL" target="_blank" rel="noopener"
+       class="btn btn-secondary text-xs">
+      ✉ Send feedback
+    </a>
+  </div>
+
+  <!--
+    ────────── Deployment checklist ──────────
+
+    Before going public, replace these placeholders in this footer:
+
+      1. #REPLACE_WITH_TCGPLAYER_AFFILIATE_URL
+         → Sign up at https://docs.tcgplayer.com/docs/tcgplayer-affiliate-program
+         → Paste your affiliate search URL here.
+
+      2. #REPLACE_WITH_EBAY_AFFILIATE_URL
+         → Sign up at https://partnernetwork.ebay.com
+         → Paste an EPN smart-link search URL for your locale.
+
+      3. #REPLACE_WITH_KOFI_URL
+         → Create page at https://ko-fi.com
+         → Paste your https://ko-fi.com/yourhandle URL.
+
+      4. #REPLACE_WITH_TALLY_OR_GOOGLE_FORM_URL
+         → Create a free form at https://tally.so (recommended) OR
+           https://forms.google.com
+         → Paste the form's public URL.
+
+      5. Cloudflare Web Analytics (in <head>):
+         → Enable Web Analytics for this domain in Cloudflare dashboard.
+         → Replace YOUR_CF_ANALYTICS_TOKEN with the issued token.
+         → Uncomment the <script> tag.
+
+    ──────────────────────────────────────────
+  -->
+</footer>
+
 </body>
 </html>
