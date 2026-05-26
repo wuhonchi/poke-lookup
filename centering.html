@@ -182,7 +182,7 @@
 
   const CARD_MM_W = 63, CARD_MM_H = 88;
   const TW = 630, TH = 880;
-  const DISPLAY_MAX = 2400;
+  const DISPLAY_MAX = 3200;
   const MIN_ZOOM = 0.5, MAX_ZOOM = 16;
   const DPR = window.devicePixelRatio || 1;
 
@@ -269,11 +269,19 @@
   }
 
   // ─────────────────────────────────────────────────────────────
-  // Build rotated offscreen source (cached)
+  // Build rotated offscreen source (cached). For rot=0 (most common
+  // case) we reuse state.img directly to avoid allocating a second
+  // full-resolution canvas — this halves memory in the default state.
   // ─────────────────────────────────────────────────────────────
   function buildRotatedSource() {
     if (!state.img) return;
     const v = state.view;
+    if (v.rot === 0) {
+      v.rotW = state.imgW;
+      v.rotH = state.imgH;
+      v.rotatedSrc = state.img;
+      return;
+    }
     const rd = rotatedDims(v.rot, state.imgW, state.imgH);
     v.rotW = rd.w; v.rotH = rd.h;
     const off = document.createElement('canvas');
@@ -746,22 +754,27 @@
     try {
       const bmp = await createImageBitmap(f, { imageOrientation: 'from-image' });
       let w = bmp.width, h = bmp.height;
-      if (Math.max(w, h) > DISPLAY_MAX) {
+
+      if (Math.max(w, h) <= DISPLAY_MAX) {
+        // Source already within budget — use the ImageBitmap directly.
+        // Avoids allocating a second full-resolution canvas (saves ~30-50 MB
+        // for typical 12 MP photos). drawImage() accepts ImageBitmap.
+        state.img = bmp;
+      } else {
+        // Too large — downscale into an offscreen canvas at high quality.
+        // No JPEG round-trip (toDataURL was previously lossy at 0.92).
         const r = DISPLAY_MAX / Math.max(w, h);
         w = Math.round(w * r);
         h = Math.round(h * r);
+        const off = document.createElement('canvas');
+        off.width = w; off.height = h;
+        const offCtx = off.getContext('2d');
+        offCtx.imageSmoothingEnabled = true;
+        offCtx.imageSmoothingQuality = 'high';
+        offCtx.drawImage(bmp, 0, 0, w, h);
+        bmp.close && bmp.close();
+        state.img = off;
       }
-      // Decode into an offscreen canvas at target resolution. No JPEG round-trip
-      // — we keep the canvas itself as the image source for drawImage() so we
-      // preserve full fidelity (was previously lossy via toDataURL('image/jpeg', 0.92)).
-      const off = document.createElement('canvas');
-      off.width = w; off.height = h;
-      const offCtx = off.getContext('2d');
-      offCtx.imageSmoothingEnabled = true;
-      offCtx.imageSmoothingQuality = 'high';
-      offCtx.drawImage(bmp, 0, 0, w, h);
-      bmp.close && bmp.close();
-      state.img = off;       // CanvasImageSource — drawImage() accepts it directly
       state.imgW = w;
       state.imgH = h;
       state.detectedPts = null;  // clear stale detection from previous image
