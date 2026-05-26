@@ -41,9 +41,11 @@
     <div>
       <h1 class="display text-2xl lg:text-4xl">POKÉ / CENTER</h1>
       <p class="text-xs lg:text-sm text-gray-400 mt-1 max-w-3xl">
-        Upload a near-top-down photo. Drag <span class="text-cyan-400 font-semibold">cyan</span> to the
-        <span class="font-semibold">physical card edge</span>, drag <span class="text-yellow-400 font-semibold">yellow</span> to the
-        <span class="font-semibold">artwork-start boundary</span> (where colored border meets central art — not the outer edge of the colored band).
+        Upload a near-top-down photo. Drag the
+        <strong>outer</strong> handles to the
+        <span class="font-semibold">physical card edge</span> and the
+        <strong>inner</strong> handles to the
+        <span class="font-semibold">artwork-start boundary</span> (where colored border meets central art — not the outer edge of the colored band). Use the <strong>Colors</strong> toggle if the handles blend with a filter.
         <span class="hidden lg:inline">Pinch / wheel = zoom. Drag empty area = pan. Arrow keys nudge selected handle 1 px (Shift = 10 px).</span>
         <span class="lg:hidden">Pinch to zoom. Drag empty area to pan.</span>
       </p>
@@ -58,11 +60,12 @@
     </label>
     <button id="rotate" class="btn btn-secondary" title="Rotate 90° clockwise">⟳ Rotate</button>
     <button id="filter-toggle" class="btn btn-secondary" title="Cycle image filter (display only — doesn't change measurements)">Filter: <span id="filter-label">Normal</span></button>
+    <button id="color-toggle" class="btn btn-secondary" title="Cycle handle colour scheme (useful when filter desaturates default cyan/yellow)">Colors: <span id="color-label">Cyan/Yellow</span></button>
     <button id="reset-view" class="btn btn-secondary" title="Reset zoom and pan">Fit</button>
     <span class="zoom-badge mono"><span id="zoom-display">100%</span></span>
     <span class="text-[11px] text-gray-500 hidden md:inline">
-      <span class="legend-dot" style="background:#22d3ee"></span>outer
-      <span class="legend-dot ml-2" style="background:#facc15"></span>inner
+      <span class="legend-dot" id="legend-outer" style="background:#22d3ee"></span>outer
+      <span class="legend-dot ml-2" id="legend-inner" style="background:#facc15"></span>inner
     </span>
     <span id="status" class="ml-auto text-[11px] text-gray-400 max-w-xs truncate"></span>
   </div>
@@ -119,7 +122,7 @@
       <div class="stat">
         <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Schematic preview</div>
         <canvas id="warp-canvas" class="w-full bg-black rounded" style="aspect-ratio: 63/88;"></canvas>
-        <div class="text-[11px] text-gray-500 mt-2">Outer = card boundary after perspective correction. Yellow = inner-frame markers warped into rectified space.</div>
+        <div class="text-[11px] text-gray-500 mt-2">Outer = card boundary after perspective correction. Inner = inner-frame markers warped into rectified space.</div>
       </div>
 
       <div class="stat">
@@ -169,8 +172,8 @@
       <details class="text-xs text-gray-400 stat">
         <summary class="text-gray-300 font-semibold">Tips & caveats</summary>
         <ul class="list-disc pl-4 mt-2 space-y-1">
-          <li><strong>Cyan</strong> = physical card edge. <strong>Yellow</strong> = where the central artwork begins (inner edge of the colored band).</li>
-          <li>If Σ L+R or Σ T+B looks far from your caliper-measured total, your handle placement (most likely yellow) is biased — re-check.</li>
+          <li><strong>Outer</strong> handles = physical card edge. <strong>Inner</strong> handles = where the central artwork begins (inner edge of the colored band).</li>
+          <li>If Σ L+R or Σ T+B looks far from your caliper-measured total, your handle placement (most likely inner) is biased — re-check.</li>
           <li>Full-art / V / ex / SAR cards often lack a clear inner frame — centering becomes ambiguous.</li>
           <li>Card is assumed flat. Bent cards give wrong mm offsets.</li>
           <li>Card dimensions assumed 63 × 88 mm.</li>
@@ -205,6 +208,14 @@
   // filter is reset to 'none' so their colors are not affected.
   // Codex review note: filters can amplify glare/shadow/JPEG block
   // artifacts into false edges — toggle off if a filter looks misleading.
+  // Handle colour schemes. Cyan/Yellow is the default; Pink/Lime stays
+  // vivid against desaturated, inverted, or dim-glare-filtered photos
+  // where the default colours can blend with the filtered background.
+  const HANDLE_SCHEMES = [
+    { label: 'Cyan/Yellow', outer: '#22d3ee', inner: '#facc15' },
+    { label: 'Pink/Lime',   outer: '#ec4899', inner: '#a3e635' },
+  ];
+
   const FILTER_MODES = [
     { label: 'Normal',    css: 'none' },
     { label: 'B/W',       css: 'grayscale(1)' },
@@ -224,6 +235,7 @@
     lockedHandle: null,     // {set, idx} of most recently auto-locked handle (for visual ring)
     countdownLoopId: null,  // requestAnimationFrame id for the countdown overlay loop
     filterIdx: 0,           // index into FILTER_MODES — display-only image filter
+    schemeIdx: 0,           // index into HANDLE_SCHEMES — current handle colour scheme
     img: null,
     imgW: 0, imgH: 0,
     canvasW: 0, canvasH: 0,
@@ -412,10 +424,11 @@
     ctx.filter = 'none';
 
     octx.clearRect(0, 0, state.canvasW, state.canvasH);
-    drawQuad(state.outer, '#22d3ee');
-    drawQuad(state.inner, '#facc15');
-    drawHandles(state.outer, '#22d3ee', 'outer');
-    drawHandles(state.inner, '#facc15', 'inner');
+    const sch = HANDLE_SCHEMES[state.schemeIdx];
+    drawQuad(state.outer, sch.outer);
+    drawQuad(state.inner, sch.inner);
+    drawHandles(state.outer, sch.outer, 'outer');
+    drawHandles(state.inner, sch.inner, 'inner');
     drawCountdown();
 
     drawMinimap();
@@ -507,8 +520,9 @@
       mctx.lineWidth = 1;
       mctx.stroke();
     };
-    drawQ(state.outer, '#22d3ee');
-    drawQ(state.inner, '#facc15');
+    const sch = HANDLE_SCHEMES[state.schemeIdx];
+    drawQ(state.outer, sch.outer);
+    drawQ(state.inner, sch.inner);
 
     const vpX = ox + v.offsetX * scale;
     const vpY = oy + v.offsetY * scale;
@@ -835,6 +849,18 @@
     $('filter-label').textContent = FILTER_MODES[state.filterIdx].label;
     if (state.img) scheduleDraw();
   });
+
+  // Cycle handle colour scheme. Useful when the image filter
+  // desaturates or inverts the photo and the default cyan/yellow
+  // handles blend with the filtered background.
+  $('color-toggle').addEventListener('click', () => {
+    state.schemeIdx = (state.schemeIdx + 1) % HANDLE_SCHEMES.length;
+    const sch = HANDLE_SCHEMES[state.schemeIdx];
+    $('color-label').textContent = sch.label;
+    $('legend-outer').style.background = sch.outer;
+    $('legend-inner').style.background = sch.inner;
+    if (state.img) scheduleDraw();
+  });
   // ─────────────────────────────────────────────────────────────
   // File upload
   // ─────────────────────────────────────────────────────────────
@@ -1087,9 +1113,10 @@
       wctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     }
     const s = cssW / fTW;
+    const sch = HANDLE_SCHEMES[state.schemeIdx];
     wctx.fillStyle = '#0a0a0a';
     wctx.fillRect(0, 0, cssW, cssH);
-    wctx.strokeStyle = '#22d3ee';
+    wctx.strokeStyle = sch.outer;
     wctx.lineWidth = 2;
     wctx.strokeRect(1, 1, cssW - 2, cssH - 2);
     wctx.beginPath();
@@ -1098,7 +1125,7 @@
       else wctx.lineTo(p.x * s, p.y * s);
     });
     wctx.closePath();
-    wctx.strokeStyle = '#facc15';
+    wctx.strokeStyle = sch.inner;
     wctx.stroke();
   }
 })();
