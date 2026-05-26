@@ -56,6 +56,10 @@
       <input type="file" id="file" accept="image/*" class="hidden" />
       Upload
     </label>
+    <label class="btn btn-primary cursor-pointer" title="Open device camera (uses native camera app on mobile — full sensor resolution)">
+      <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden" />
+      📷 Camera
+    </label>
     <button id="auto" class="btn btn-secondary" title="Detect card edge via Roboflow cloud API (uploads downscaled image)">Auto-detect ☁︎</button>
     <button id="rotate" class="btn btn-secondary" title="Rotate 90° clockwise">⟳ Rotate</button>
     <button id="reset-view" class="btn btn-secondary" title="Reset zoom and pan">Fit</button>
@@ -169,7 +173,9 @@
           <li>Full-art / V / ex / SAR cards often lack a clear inner frame — centering becomes ambiguous.</li>
           <li>Card is assumed flat. Bent cards give wrong mm offsets.</li>
           <li>Card dimensions assumed 63 × 88 mm.</li>
-          <li>Best capture: dark matte background, no flash, even diffused light, phone parallel to card, full card with margin, sleeves removed, use main lens not ultra-wide.</li>
+          <li>Best capture: dark matte background, no flash, even diffused light, phone parallel to card, full card with margin, sleeves removed. <strong>Lens choice matters</strong>: prefer 2× / telephoto if your phone has one. Ultra-wide adds barrel distortion that bends straight card edges and biases L/R borders ~0.1-0.2 mm.</li>
+          <li>The <strong>📷 Camera</strong> button opens your native camera app on mobile — gives full sensor resolution (12 MP+) instead of the lower-res webcam stream a web page can access directly.</li>
+          <li>Handles auto-<strong>lock after 3 s</strong> of no movement to prevent the tiny release-nudge. Lift and tap again to resume. Green ring = locked.</li>
         </ul>
       </details>
     </aside>
@@ -186,6 +192,11 @@
   const MIN_ZOOM = 0.5, MAX_ZOOM = 16;
   const DPR = window.devicePixelRatio || 1;
 
+  // Handle auto-lock: 3 s of no pointer movement during a drag locks
+  // the handle, preventing the tiny release nudge from shifting it.
+  // User lifts finger and taps again to resume.
+  const HANDLE_LOCK_MS = 3000;
+
   // Card detection routed through a Cloudflare Worker that proxies to a
   // Roboflow "general-segmentation-api" workflow. The Worker:
   //   1. adds proper CORS headers (the Roboflow OPTIONS preflight is
@@ -200,6 +211,8 @@
 
   const state = {
     detectedPts: null,   // last Roboflow detection points (in source image coords) — for debug overlay
+    lockTimer: null,     // setTimeout handle for handle auto-lock after idle
+    lockedHandle: null,  // {set, idx} of most recently auto-locked handle (for visual ring)
     img: null,
     imgW: 0, imgH: 0,
     canvasW: 0, canvasH: 0,
@@ -427,14 +440,15 @@
     pts.forEach((p, idx) => {
       const cp = imageToCanvas(p);
       const isSel = state.selected && state.selected.set === setName && state.selected.idx === idx;
+      const isLocked = state.lockedHandle && state.lockedHandle.set === setName && state.lockedHandle.idx === idx;
       octx.beginPath();
       octx.arc(cp.x, cp.y, 4, 0, Math.PI * 2);
       octx.fillStyle = color;
       octx.fill();
       octx.beginPath();
-      octx.arc(cp.x, cp.y, isSel ? 11 : 8, 0, Math.PI * 2);
-      octx.lineWidth = isSel ? 2.5 : 1.5;
-      octx.strokeStyle = isSel ? '#ffffff' : color + 'cc';
+      octx.arc(cp.x, cp.y, isLocked ? 13 : (isSel ? 11 : 8), 0, Math.PI * 2);
+      octx.lineWidth = isLocked ? 3 : (isSel ? 2.5 : 1.5);
+      octx.strokeStyle = isLocked ? '#34d399' : (isSel ? '#ffffff' : color + 'cc');
       octx.stroke();
       const r = 14;
       octx.beginPath();
@@ -560,6 +574,22 @@
     return null;
   }
 
+  function startLockTimer() {
+    if (state.lockTimer) clearTimeout(state.lockTimer);
+    state.lockTimer = setTimeout(() => {
+      if (state.drag && state.drag.mode === 'handle') {
+        state.lockedHandle = { set: state.drag.set, idx: state.drag.idx };
+        state.drag = null;
+        setStatus('Handle locked (idle ≥ 3 s). Lift finger and tap again to move it.');
+        scheduleDraw();
+      }
+      state.lockTimer = null;
+    }, HANDLE_LOCK_MS);
+  }
+  function clearLockTimer() {
+    if (state.lockTimer) { clearTimeout(state.lockTimer); state.lockTimer = null; }
+  }
+
   overlayCanvas.addEventListener('pointerdown', e => {
     if (!state.img) return;
     e.preventDefault();
@@ -572,6 +602,8 @@
       if (hit) {
         state.drag = { mode: 'handle', set: hit.set, idx: hit.idx };
         state.selected = hit;
+        state.lockedHandle = null;     // clear any prior lock visual
+        startLockTimer();              // start idle countdown
         scheduleDraw();
       } else {
         state.drag = {
@@ -605,7 +637,13 @@
       const ip = canvasToImage(pt);
       ip.x = Math.max(0, Math.min(state.imgW, ip.x));
       ip.y = Math.max(0, Math.min(state.imgH, ip.y));
+      const prev = state[state.drag.set][state.drag.idx];
+      // Only restart the lock timer when there's meaningful movement
+      // (>0.5 image px). Sub-pixel jitter from finger tremor shouldn't
+      // keep the lock alive forever.
+      const moved = Math.hypot(ip.x - prev.x, ip.y - prev.y);
       state[state.drag.set][state.drag.idx] = ip;
+      if (moved > 0.5) startLockTimer();
       scheduleDraw();
     } else if (state.drag.mode === 'pan' && state.pointers.size === 1) {
       const dx = pt.x - state.drag.startPt.x;
@@ -641,6 +679,7 @@
     state.pointers.delete(e.pointerId);
     try { overlayCanvas.releasePointerCapture(e.pointerId); } catch (_) {}
     if (state.pointers.size === 0) {
+      clearLockTimer();
       state.drag = null;
     } else if (state.pointers.size === 1 && state.drag && state.drag.mode === 'pinch') {
       const remaining = [...state.pointers.values()][0].pt;
@@ -747,7 +786,11 @@
   // ─────────────────────────────────────────────────────────────
   // File upload
   // ─────────────────────────────────────────────────────────────
-  $('file').addEventListener('change', async e => {
+  // Wire both Upload and Camera inputs to the same handler.
+  // The Camera input adds capture="environment" so on mobile the OS
+  // opens the native camera app at full sensor resolution; on desktop
+  // it falls back to a file picker.
+  async function handleImageFile(e) {
     const f = e.target.files[0];
     if (!f) return;
     setStatus('Loading image…');
@@ -777,7 +820,9 @@
       }
       state.imgW = w;
       state.imgH = h;
-      state.detectedPts = null;  // clear stale detection from previous image
+      state.detectedPts = null;     // clear stale detection from previous image
+      state.lockedHandle = null;    // clear stale lock visual
+      clearLockTimer();
       state.view.rot = 0;
       state.view.zoom = 1;
       state.view.offsetX = 0;
@@ -793,7 +838,11 @@
     } catch (err) {
       setStatus('Failed to load image: ' + err.message);
     }
-  });
+    // Clear the input value so re-selecting the same file/photo re-fires change.
+    e.target.value = '';
+  }
+  $('file').addEventListener('change', handleImageFile);
+  $('camera-input').addEventListener('change', handleImageFile);
 
   function resetHandles() {
     const w = state.imgW, h = state.imgH;
