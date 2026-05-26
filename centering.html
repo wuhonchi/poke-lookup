@@ -92,14 +92,20 @@
           <div class="text-[10px] text-gray-500 uppercase tracking-wider">Left / Right</div>
           <div class="mono text-2xl font-bold" id="lr">— / —</div>
           <div class="text-[11px] text-gray-500 mono" id="lr-mm">— / — mm</div>
-          <div class="text-[11px] text-gray-600 mono mt-1">Σ L+R: <span id="lr-sum">—</span> mm</div>
+          <div class="text-[11px] text-gray-600 mono mt-1">Σ L+R: <span id="lr-sum">—</span> mm est.</div>
         </div>
         <div class="stat">
           <div class="text-[10px] text-gray-500 uppercase tracking-wider">Top / Bottom</div>
           <div class="mono text-2xl font-bold" id="tb">— / —</div>
           <div class="text-[11px] text-gray-500 mono" id="tb-mm">— / — mm</div>
-          <div class="text-[11px] text-gray-600 mono mt-1">Σ T+B: <span id="tb-sum">—</span> mm</div>
+          <div class="text-[11px] text-gray-600 mono mt-1">Σ T+B: <span id="tb-sum">—</span> mm est.</div>
         </div>
+      </div>
+
+      <div class="text-[11px] text-gray-500 -mt-1 px-1">
+        Ratios (L/R, T/B) are the primary measurement. mm values are
+        estimates — biased by handle placement, lens distortion, and
+        rounded card corners. <span id="frame-info" class="mono"></span>
       </div>
 
       <div class="stat">
@@ -180,8 +186,10 @@
 (() => {
   'use strict';
 
-  const CARD_MM_W = 63, CARD_MM_H = 88;
-  const TW = 630, TH = 880;
+  // Card frame dimensions are chosen adaptively per compute() — see
+  // pickFrame() / compute() below. The two legal frames are 63 × 88 mm
+  // (portrait) and 88 × 63 mm (landscape). Sub-mm scale always uses
+  // 10 px per mm internally (630/63 = 880/88 = 10).
   const DISPLAY_MAX = 3200;
   const MIN_ZOOM = 0.5, MAX_ZOOM = 16;
   const DPR = window.devicePixelRatio || 1;
@@ -203,6 +211,11 @@
     { label: 'B/W HiCon', css: 'grayscale(1) contrast(2)' },
     { label: 'Invert',    css: 'invert(1)' },
     { label: 'Invert HC', css: 'invert(1) contrast(1.8)' },
+    // "Glare Dim" — for sleeves / top loaders / card shields. Uniformly
+    // darkens highlights so plastic reflections don't blow out the card
+    // edge. (CSS filters can't selectively dampen bright spots; this is
+    // a visibility aid, not a true de-glare.)
+    { label: 'Glare Dim', css: 'grayscale(1) brightness(0.72) contrast(1.65)' },
   ];
 
   const state = {
@@ -954,8 +967,46 @@
   // ─────────────────────────────────────────────────────────────
   // Compute centering
   // ─────────────────────────────────────────────────────────────
+  //
+  // The dst rectangle is chosen ADAPTIVELY based on the outer quad's
+  // pair-of-sides ratio. Two legal frames only:
+  //
+  //   - portrait:  TW=630 (= 63 mm wide),  TH=880 (= 88 mm tall)
+  //   - landscape: TW=880 (= 88 mm wide),  TH=630 (= 63 mm tall)
+  //
+  // Without this, a sideways-photographed (or rotated-after-handles)
+  // card gets forced into the portrait dst, squishing L+R by the
+  // 63/88 factor (= 28% shrink). The orientation is decided from the
+  // longer pair of outer-quad sides, which corresponds to the card's
+  // physical 88 mm side regardless of how the photo is oriented.
+  //
+  // Codex-suggested ambiguity thresholds:
+  //   ratio (long/short) ≥ 1.18  → confident
+  //   1.08 ≤ ratio < 1.18         → uncertain (mark frame as est)
+  //   ratio < 1.08                → very weak evidence; default portrait + warn
+  function pickFrame(outer) {
+    const sideLen = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const horizPair = sideLen(outer[0], outer[1]) + sideLen(outer[2], outer[3]);
+    const vertPair  = sideLen(outer[1], outer[2]) + sideLen(outer[3], outer[0]);
+    const ratio = Math.max(horizPair, vertPair) / Math.max(1e-9, Math.min(horizPair, vertPair));
+    let landscape;
+    if (ratio < 1.08) {
+      landscape = false;  // fallback: default portrait
+    } else {
+      landscape = horizPair > vertPair;
+    }
+    const confidence = ratio >= 1.18 ? 'high' : (ratio >= 1.08 ? 'uncertain' : 'low');
+    if (landscape) {
+      return { landscape: true,  TW: 880, TH: 630, wMm: 88, hMm: 63, confidence };
+    } else {
+      return { landscape: false, TW: 630, TH: 880, wMm: 63, hMm: 88, confidence };
+    }
+  }
+
   function compute() {
     if (!state.outer || !state.inner || !state.img) return;
+    const frame = pickFrame(state.outer);
+    const { TW, TH, wMm, hMm, landscape, confidence } = frame;
     const dst = [{x:0,y:0},{x:TW,y:0},{x:TW,y:TH},{x:0,y:TH}];
     const H = computeHomography(state.outer, dst);
     if (!H) { setStatus('Degenerate outer quad.'); return; }
@@ -968,21 +1019,33 @@
 
     const lrSum = L + R, tbSum = T + B;
     if (lrSum <= 0 || tbSum <= 0) { setStatus('Inner quad outside outer — adjust handles.'); return; }
-    // Raw (unrounded) ratios for grade decision; rounded for UI only.
     const lFrac = L / lrSum, tFrac = T / tbSum;
     const lPct = Math.round(lFrac * 100), rPct = 100 - lPct;
     const tPct = Math.round(tFrac * 100), bPct = 100 - tPct;
     $('lr').textContent = `${lPct} / ${rPct}`;
     $('tb').textContent = `${tPct} / ${bPct}`;
-    const lmmN = L * CARD_MM_W / TW, rmmN = R * CARD_MM_W / TW;
-    const tmmN = T * CARD_MM_H / TH, bmmN = B * CARD_MM_H / TH;
-    $('lr-mm').textContent = `${lmmN.toFixed(2)} / ${rmmN.toFixed(2)} mm`;
-    $('tb-mm').textContent = `${tmmN.toFixed(2)} / ${bmmN.toFixed(2)} mm`;
+    const lmmN = L * wMm / TW, rmmN = R * wMm / TW;
+    const tmmN = T * hMm / TH, bmmN = B * hMm / TH;
+    $('lr-mm').textContent = `${lmmN.toFixed(2)} / ${rmmN.toFixed(2)} mm est.`;
+    $('tb-mm').textContent = `${tmmN.toFixed(2)} / ${bmmN.toFixed(2)} mm est.`;
     $('lr-sum').textContent = (lmmN + rmmN).toFixed(2);
     $('tb-sum').textContent = (tmmN + bmmN).toFixed(2);
 
-    // Grade decision uses raw unrounded ratios so borderline cards
-    // (e.g. 54.6/45.4) aren't misclassified by Math.round.
+    // Frame orientation indicator
+    const frameLine = $('frame-info');
+    if (frameLine) {
+      frameLine.textContent = `Frame: ${wMm} × ${hMm} mm (${landscape ? 'landscape' : 'portrait'})`;
+      frameLine.className = 'text-[11px] mono mt-1 ' + (
+        confidence === 'high' ? 'text-gray-500' :
+        confidence === 'uncertain' ? 'text-amber-400' :
+                                     'text-red-400'
+      );
+      if (confidence !== 'high') {
+        frameLine.textContent += confidence === 'uncertain' ? ' — orientation uncertain' : ' — weak evidence';
+      }
+    }
+
+    // Grade decision uses raw unrounded ratios.
     const worst = Math.max(Math.abs(lFrac - 0.5), Math.abs(tFrac - 0.5)) * 100;
     let label, cls;
     if      (worst <=  5) { label = 'Gem Mint 10 (centering)'; cls = 'grade-10'; }
@@ -994,19 +1057,22 @@
     g.textContent = label;
     g.className = 'grade-badge ' + cls;
 
-    renderWarp(inner);
+    renderWarp(inner, frame);
   }
 
-  function renderWarp(innerWarped) {
+  function renderWarp(innerWarped, frame) {
+    const { TW: fTW, TH: fTH } = frame;
+    // Match the warp canvas aspect to the chosen frame (portrait or landscape).
+    warpCanvas.style.aspectRatio = `${fTW} / ${fTH}`;
     const cssW = Math.round(warpCanvas.clientWidth || 200);
-    const cssH = Math.round(cssW * (TH / TW));
+    const cssH = Math.round(cssW * (fTH / fTW));
     if (warpCanvas.width !== cssW * DPR || warpCanvas.height !== cssH * DPR) {
       warpCanvas.width = cssW * DPR;
       warpCanvas.height = cssH * DPR;
       warpCanvas.style.height = cssH + 'px';
       wctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     }
-    const s = cssW / TW;
+    const s = cssW / fTW;
     wctx.fillStyle = '#0a0a0a';
     wctx.fillRect(0, 0, cssW, cssH);
     wctx.strokeStyle = '#22d3ee';
