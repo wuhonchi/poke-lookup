@@ -10,11 +10,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=JetBrains+Mono:wght@400;700&family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
 
-<!-- Cloudflare Web Analytics — paste your token after deployment.
-     Privacy-friendly, cookieless, GDPR-compliant. Free unlimited tier.
+<!-- Cloudflare Web Analytics (privacy-friendly, cookieless, GDPR-compliant) -->
 <script defer src='https://static.cloudflareinsights.com/beacon.min.js'
-        data-cf-beacon='{"token": "YOUR_CF_ANALYTICS_TOKEN"}'></script>
--->
+        data-cf-beacon='{"token": "87cd75bdff944bdfa5443e8045fe56e6"}'></script>
 
 <!-- Open Graph / preview metadata -->
 <meta property="og:title" content="CardJeng — Centering analyzer" />
@@ -44,9 +42,125 @@
   .grade-low{ background: #3f0a14; color: #f87171; border: 1px solid #991b1b; }
   details > summary { cursor: pointer; user-select: none; }
   .zoom-badge { background: rgba(0,0,0,0.6); border: 1px solid #333; padding: 4px 8px; border-radius: 4px; font-size: 11px; }
+
+  /* On-screen D-pad for fine handle nudge — visible only when a
+     handle is selected. Floats over the bottom-right of the front
+     canvas. Codex-recommended: 48 px hit targets, translucent. */
+  .nudge-pad { position: absolute; bottom: 10px; right: 10px; z-index: 5;
+               display: grid; grid-template-columns: 44px 44px 44px;
+               grid-template-rows: 44px 44px 44px; gap: 2px;
+               background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.18);
+               border-radius: 10px; padding: 3px; backdrop-filter: blur(4px); }
+  .nudge-pad[hidden] { display: none; }
+  .nudge-btn { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
+               color: #f3f3f3; font-size: 18px; line-height: 1; cursor: pointer;
+               touch-action: manipulation; user-select: none; -webkit-user-select: none;
+               border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+  .nudge-btn:active { background: rgba(250, 204, 21, 0.35); color: #facc15; }
+  .nudge-btn:disabled { opacity: 0.4; }
+  .nudge-up    { grid-column: 2; grid-row: 1; }
+  .nudge-left  { grid-column: 1; grid-row: 2; }
+  .nudge-right { grid-column: 3; grid-row: 2; }
+  .nudge-down  { grid-column: 2; grid-row: 3; }
+
+  /* Tips modal — uses native <dialog> so Escape, focus trap and
+     backdrop click handling come free. */
+  dialog#tips-modal { background: #111; color: #eee; border: 1px solid #2a2a2a; border-radius: 12px;
+                      max-width: 640px; width: calc(100% - 24px); padding: 0; margin: auto; max-height: 90vh; overflow: auto; }
+  dialog#tips-modal::backdrop { background: rgba(0,0,0,0.75); backdrop-filter: blur(3px); }
+  dialog#tips-modal .tip-row { display: flex; gap: 10px; padding: 6px 0; align-items: flex-start; }
+  dialog#tips-modal .tip-row .icon { flex-shrink: 0; font-size: 18px; line-height: 1.2; }
+  dialog#tips-modal .tip-row .text-zh { color: #f3f3f3; line-height: 1.45; }
+  dialog#tips-modal .tip-row .text-en { color: #9ca3af; font-size: 12px; line-height: 1.4; margin-top: 2px; }
+  dialog#tips-modal figure img { width: 100%; height: auto; border-radius: 6px; border: 1px solid #2a2a2a; display: block; }
+  dialog#tips-modal figcaption { font-size: 11px; color: #888; margin-top: 4px; text-align: center; }
 </style>
 </head>
 <body class="min-h-screen">
+
+<!-- ────────── Tips modal (first-visit auto-show, re-open via ? button) ────────── -->
+<dialog id="tips-modal" aria-labelledby="tips-title">
+  <div class="p-5 space-y-4">
+    <div class="flex items-start justify-between gap-3">
+      <h2 id="tips-title" class="display text-lg lg:text-xl text-yellow-400">
+        簡單使用守則 <span class="text-gray-500">·</span> Quick Tips
+      </h2>
+      <button id="tips-x" class="text-gray-500 hover:text-gray-200 text-xl leading-none px-2" aria-label="Close">✕</button>
+    </div>
+
+    <div class="space-y-2.5">
+      <div class="tip-row">
+        <span class="icon">📐</span>
+        <div>
+          <div class="text-zh">手機鏡頭盡量同張卡平行，唔好斜影，否則會影響準確度。</div>
+          <div class="text-en">Keep your phone parallel to the card. Tilt reduces accuracy.</div>
+        </div>
+      </div>
+      <div class="tip-row">
+        <span class="icon">📄</span>
+        <div>
+          <div class="text-zh">張卡要平放，唔好彎曲、拱起或凹凸不平。</div>
+          <div class="text-en">Keep the card flat. Bent or curved cards affect the measurement.</div>
+        </div>
+      </div>
+      <div class="tip-row">
+        <span class="icon">📷</span>
+        <div>
+          <div class="text-zh">盡量用高解像度、清晰、光線平均嘅相。</div>
+          <div class="text-en">Use a sharp, high-resolution photo with even lighting.</div>
+        </div>
+      </div>
+      <div class="tip-row">
+        <span class="icon">🔭</span>
+        <div>
+          <div class="text-zh">建議用 <strong>1.5×</strong> 或 <strong>2×</strong> 鏡頭；避免 <strong>0.5× / 超廣角</strong>，減少魚眼或桶形變形。</div>
+          <div class="text-en">Use the 1.5× or 2× lens if available. Avoid 0.5× / ultra-wide — it causes fisheye / barrel distortion at card edges.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-3 pt-2">
+      <figure>
+        <img src="tutorial-card.jpg" alt="A good top-down card photo example" onerror="this.parentElement.style.display='none'">
+        <figcaption>好示範 · Good photo</figcaption>
+      </figure>
+      <figure>
+        <img src="tutorial-tool.jpg" alt="Handle placement example in the tool" onerror="this.parentElement.style.display='none'">
+        <figcaption>放 handle · Placement</figcaption>
+      </figure>
+    </div>
+
+    <!-- Back inspection sub-section -->
+    <div class="pt-3 border-t border-zinc-800">
+      <h3 class="text-sm font-semibold text-yellow-400 mb-2">背面白點檢查 <span class="text-gray-500">·</span> Back spot inspection</h3>
+      <div class="tip-row">
+        <span class="icon">🔍</span>
+        <div>
+          <div class="text-zh">用 <strong>Invert</strong> / <strong>Invert HC</strong> filter 睇背面，白點、塵、印刷瑕疵會變成黑點，明顯好多。</div>
+          <div class="text-en">Apply the <strong>Invert</strong> / <strong>Invert HC</strong> filter on the back: white spots, dust, and surface marks turn dark — much easier to spot.</div>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3 pt-2">
+        <figure>
+          <img src="tutorial-back-normal.jpg" alt="Normal back of a Pokemon card — no filter applied" onerror="this.parentElement.style.display='none'">
+          <figcaption>原相 · Original</figcaption>
+        </figure>
+        <figure>
+          <img src="tutorial-back-filter.jpg" alt="Same back image with Invert HC filter — white spots now appear black" onerror="this.parentElement.style.display='none'">
+          <figcaption>Invert 後 · After filter</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between gap-3 pt-2 border-t border-zinc-800">
+      <label class="text-xs text-gray-400 flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" id="tips-dont-show" class="accent-yellow-500">
+        <span>下次唔再彈出 · Don't show again</span>
+      </label>
+      <button id="tips-ok" class="btn btn-primary text-sm">明白 · Got it</button>
+    </div>
+  </div>
+</dialog>
 
 <div class="max-w-7xl mx-auto p-3 lg:p-6">
   <header class="mb-4">
@@ -65,22 +179,30 @@
     </p>
   </header>
 
-  <div class="flex flex-wrap gap-2 mb-3 items-center">
-    <label class="btn btn-primary cursor-pointer">
-      <input type="file" id="file" accept="image/*" class="hidden" />
-      Upload
-    </label>
-    <button id="rotate" class="btn btn-secondary" title="Rotate 90° clockwise">⟳ Rotate</button>
-    <button id="filter-toggle" class="btn btn-secondary" title="Cycle image filter (display only — doesn't change measurements)">Filter: <span id="filter-label">Normal</span></button>
-    <button id="color-toggle" class="btn btn-secondary" title="Cycle handle colour scheme (useful when filter desaturates default cyan/yellow)">Colors: <span id="color-label">Cyan/Yellow</span></button>
-    <button id="reset-view" class="btn btn-secondary" title="Reset zoom and pan">Fit</button>
-    <span class="zoom-badge mono"><span id="zoom-display">100%</span></span>
-    <span class="text-[11px] text-gray-500 hidden md:inline">
-      <span class="legend-dot" id="legend-outer" style="background:#22d3ee"></span>outer
-      <span class="legend-dot ml-2" id="legend-inner" style="background:#facc15"></span>inner
-    </span>
-    <span id="status" class="ml-auto text-[11px] text-gray-400 max-w-xs truncate"></span>
-  </div>
+  <!-- ────────── FRONT section ────────── -->
+  <section class="border-t border-zinc-900 pt-4">
+    <div class="flex items-baseline gap-3 flex-wrap mb-2">
+      <h2 class="display text-lg lg:text-2xl text-gray-300">正面 · Front</h2>
+      <p class="mono text-[10px] lg:text-xs text-gray-500 uppercase tracking-[0.2em]">centering analyzer</p>
+    </div>
+
+    <div class="flex flex-wrap gap-2 mb-3 items-center">
+      <label class="btn btn-primary cursor-pointer">
+        <input type="file" id="file" accept="image/*" class="hidden" />
+        Upload
+      </label>
+      <button id="rotate" class="btn btn-secondary" title="Rotate front 90° clockwise">⟳ Rotate</button>
+      <button id="filter-toggle" class="btn btn-secondary" title="Cycle front-image filter (display only — doesn't change measurements)">Filter: <span id="filter-label">Normal</span></button>
+      <button id="color-toggle" class="btn btn-secondary" title="Cycle handle colour scheme">Colors: <span id="color-label">Cyan/Yellow</span></button>
+      <button id="reset-view" class="btn btn-secondary" title="Reset front zoom and pan">Fit</button>
+      <button id="tips-open" class="btn btn-secondary" title="Show usage tips · 顯示使用守則" aria-label="Show tips">?</button>
+      <span class="zoom-badge mono"><span id="zoom-display">100%</span></span>
+      <span class="text-[11px] text-gray-500 hidden md:inline">
+        <span class="legend-dot" id="legend-outer" style="background:#22d3ee"></span>outer
+        <span class="legend-dot ml-2" id="legend-inner" style="background:#facc15"></span>inner
+      </span>
+      <span id="status" class="ml-auto text-[11px] text-gray-400 max-w-xs truncate"></span>
+    </div>
 
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 lg:gap-4">
 
@@ -91,9 +213,18 @@
         <div id="empty-state" class="absolute inset-0 flex items-center justify-center text-gray-600 text-sm pointer-events-none p-4 text-center">
           Upload a photo to begin.
         </div>
+
+        <!-- Floating D-pad for 1-pixel handle nudge (mobile-friendly).
+             Hidden by default; appears when a handle is selected. -->
+        <div id="nudge-pad" class="nudge-pad" role="group" aria-label="Nudge selected handle" hidden>
+          <button class="nudge-btn nudge-up"    type="button" aria-label="Nudge up 1 pixel">▲</button>
+          <button class="nudge-btn nudge-left"  type="button" aria-label="Nudge left 1 pixel">◀</button>
+          <button class="nudge-btn nudge-right" type="button" aria-label="Nudge right 1 pixel">▶</button>
+          <button class="nudge-btn nudge-down"  type="button" aria-label="Nudge down 1 pixel">▼</button>
+        </div>
       </div>
       <div class="text-[10px] text-gray-500 mt-1.5 lg:hidden">
-        Tap handle to select. Pinch to zoom. Drag empty area to pan. Use ⟳ to rotate.
+        Tap handle to select → use arrow D-pad to fine-tune. Pinch to zoom. Drag empty area to pan. Use ⟳ to rotate.
       </div>
       <div id="minimap-wrap" class="minimap-wrap-inline mt-2" style="display:none;">
         <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Navigator</div>
@@ -190,11 +321,57 @@
           <li>Card is assumed flat. Bent cards give wrong mm offsets.</li>
           <li>Card dimensions assumed 63 × 88 mm.</li>
           <li>Best capture: dark matte background, no flash, even diffused light, phone parallel to card, full card with margin, sleeves removed. <strong>Lens choice matters</strong>: prefer 2× / telephoto if your phone has one. Ultra-wide adds barrel distortion that bends straight card edges and biases L/R borders ~0.1-0.2 mm.</li>
-          <li>Handles auto-<strong>lock after 1 s</strong> of no movement to prevent the tiny release-nudge. A countdown ring in the center of the canvas shows remaining hold time. Lift and tap again to resume; green ring = locked.</li>
+          <li>Handles auto-<strong>lock after 1.5 s</strong> of no movement to prevent the tiny release-nudge. A countdown ring in the center of the canvas shows remaining hold time. Lift and tap again to resume; green ring = locked.</li>
         </ul>
       </details>
     </aside>
   </div>
+  </section><!-- /FRONT section -->
+
+  <!-- ────────── BACK section (inspection only — independent state) ────────── -->
+  <section class="mt-8 lg:mt-12 border-t border-zinc-900 pt-4" id="back-section">
+    <div class="flex items-baseline gap-3 flex-wrap mb-2">
+      <h2 class="display text-lg lg:text-2xl text-gray-300">背面 · Back</h2>
+      <p class="mono text-[10px] lg:text-xs text-gray-500 uppercase tracking-[0.2em]">filter inspection</p>
+    </div>
+
+    <div class="flex flex-wrap gap-2 mb-3 items-center">
+      <label class="btn btn-primary cursor-pointer">
+        <input type="file" id="back-input" accept="image/*" class="hidden" />
+        Upload back
+      </label>
+      <button id="back-rotate" class="btn btn-secondary" title="Rotate back 90° clockwise">⟳ Rotate</button>
+      <button id="back-filter-toggle" class="btn btn-secondary" title="Cycle back-image filter (independent from front)">Filter: <span id="back-filter-label">Normal</span></button>
+      <button id="back-reset-view" class="btn btn-secondary" title="Reset back zoom and pan">Fit</button>
+      <span class="zoom-badge mono"><span id="back-zoom-display">100%</span></span>
+      <span id="back-status" class="ml-auto text-[11px] text-gray-400 max-w-xs truncate"></span>
+    </div>
+
+    <p class="text-[11px] text-gray-500 mb-3 max-w-3xl">
+      Independent filter for spotting white spots / surface defects on the back. No handles or measurement here — pinch / wheel to zoom, drag empty area to pan.
+      · 獨立 filter 用嚟檢查背面白點 / 表面瑕疵，呢度淨係睇相，無 handle。
+    </p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 lg:gap-4">
+      <div class="lg:col-span-2">
+        <div class="canvas-wrap" id="back-canvas-wrap">
+          <canvas id="back-img-canvas" class="image-canvas" width="800" height="450"></canvas>
+          <div id="back-empty" class="absolute inset-0 flex items-center justify-center text-gray-600 text-sm p-4 text-center cursor-pointer select-none">
+            <div>
+              <div class="text-3xl mb-2">⤴</div>
+              <div>㩒一下或拖入背面相</div>
+              <div class="text-[11px] text-gray-700 mt-1">Tap or drop, or use Upload back above</div>
+            </div>
+          </div>
+        </div>
+        <div class="text-[10px] text-gray-500 mt-1.5 lg:hidden">Pinch to zoom · Drag empty area to pan.</div>
+        <div id="back-minimap-wrap" class="minimap-wrap-inline mt-2" style="display:none;">
+          <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Back navigator</div>
+          <canvas id="back-minimap-canvas" class="minimap-canvas" width="220" height="300"></canvas>
+        </div>
+      </div>
+    </div>
+  </section>
 </div>
 
 <script>
@@ -209,11 +386,11 @@
   const MIN_ZOOM = 0.5, MAX_ZOOM = 16;
   const DPR = window.devicePixelRatio || 1;
 
-  // Handle auto-lock: 1 s of no pointer movement during a drag locks
+  // Handle auto-lock: 1.5 s of no pointer movement during a drag locks
   // the handle, preventing the tiny release nudge from shifting it.
   // User lifts finger and taps again to resume. A countdown overlay
   // renders in the centre of the canvas while a handle is held.
-  const HANDLE_LOCK_MS = 1000;
+  const HANDLE_LOCK_MS = 1500;
 
   // Display-only image filters. Applied to drawImage() of the photo;
   // overlays (handles, quads, detection dots) are drawn AFTER the
@@ -696,7 +873,7 @@
       const hit = pickHandle(pt);
       if (hit) {
         state.drag = { mode: 'handle', set: hit.set, idx: hit.idx };
-        state.selected = hit;
+        setSelected(hit);
         state.lockedHandle = null;     // clear any prior lock visual
         startLockTimer();              // start idle countdown
         scheduleDraw();
@@ -821,11 +998,11 @@
       ];
       const cur = order.findIndex(o => o.set === state.selected.set && o.idx === state.selected.idx);
       const next = (cur + (e.shiftKey ? -1 : 1) + 8) % 8;
-      state.selected = order[next];
+      setSelected(order[next]);
       scheduleDraw();
       return;
     }
-    if (e.key === 'Escape') { state.selected = null; scheduleDraw(); return; }
+    if (e.key === 'Escape') { setSelected(null); scheduleDraw(); return; }
 
     const step = e.shiftKey ? 10 : 1;
     let dx = 0, dy = 0;
@@ -835,11 +1012,60 @@
     else if (e.key === 'ArrowDown')  dy = step;
     else return;
     e.preventDefault();
+    nudgeSelected(dx, dy);
+  });
+
+  // ─────────────────────────────────────────────────────────────
+  // Shared nudge helper + selection setter (keyboard + D-pad)
+  // ─────────────────────────────────────────────────────────────
+  function setSelected(v) {
+    state.selected = v;
+    const pad = $('nudge-pad');
+    if (pad) pad.hidden = !v;
+  }
+
+  function nudgeSelected(dx, dy) {
+    if (!state.selected) return;
     const p = state[state.selected.set][state.selected.idx];
     p.x = Math.max(0, Math.min(state.imgW, p.x + dx));
     p.y = Math.max(0, Math.min(state.imgH, p.y + dy));
     scheduleDraw();
-  });
+  }
+
+  // D-pad: tap = 1 image px; hold to repeat. stopPropagation so the
+  // press doesn't trigger canvas pan/drag.
+  function wireNudgeBtn(el, dx, dy) {
+    if (!el) return;
+    let holdTimer = null, repeatTimer = null;
+    const fire = () => nudgeSelected(dx, dy);
+    const stop = e => {
+      if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+      if (repeatTimer) { clearInterval(repeatTimer); repeatTimer = null; }
+      if (e && e.pointerId !== undefined) {
+        try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+      }
+    };
+    el.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      el.setPointerCapture(e.pointerId);
+      fire();
+      // Start repeat after a short delay, slightly faster after 1 s.
+      holdTimer = setTimeout(() => {
+        repeatTimer = setInterval(fire, 100);
+        setTimeout(() => {
+          if (repeatTimer) { clearInterval(repeatTimer); repeatTimer = setInterval(fire, 60); }
+        }, 1000);
+      }, 350);
+    });
+    el.addEventListener('pointerup', stop);
+    el.addEventListener('pointercancel', stop);
+    el.addEventListener('pointerleave', stop);
+  }
+  wireNudgeBtn(document.querySelector('.nudge-up'),    0, -1);
+  wireNudgeBtn(document.querySelector('.nudge-down'),  0,  1);
+  wireNudgeBtn(document.querySelector('.nudge-left'), -1,  0);
+  wireNudgeBtn(document.querySelector('.nudge-right'), 1,  0);
 
   // ─────────────────────────────────────────────────────────────
   // Buttons
@@ -873,6 +1099,44 @@
     $('legend-inner').style.background = sch.inner;
     if (state.img) scheduleDraw();
   });
+
+  // ─────────────────────────────────────────────────────────────
+  // Tips modal (first-visit + manual re-open)
+  // ─────────────────────────────────────────────────────────────
+  const TIPS_SEEN_KEY = 'cardjeng_tips_seen_v1';
+  const tipsModal = $('tips-modal');
+  function openTips() {
+    if (!tipsModal.open && typeof tipsModal.showModal === 'function') {
+      tipsModal.showModal();
+    } else if (!tipsModal.open) {
+      tipsModal.setAttribute('open', '');           // fallback for older browsers
+    }
+    // Always scroll modal content back to top on open (without this,
+    // Safari sometimes restores the previous scroll position OR the
+    // auto-focused element pulls scroll toward it). Defensive scroll
+    // on next frame so it runs after the dialog's own layout.
+    requestAnimationFrame(() => { tipsModal.scrollTop = 0; });
+  }
+  function closeTips() {
+    if (tipsModal.open) {
+      if ($('tips-dont-show')?.checked) {
+        try { localStorage.setItem(TIPS_SEEN_KEY, '1'); } catch (_) {}
+      }
+      tipsModal.close();
+    }
+  }
+  $('tips-open').addEventListener('click', openTips);
+  $('tips-x').addEventListener('click', closeTips);
+  $('tips-ok').addEventListener('click', closeTips);
+  // Backdrop click closes (native <dialog> doesn't do this by default)
+  tipsModal.addEventListener('click', e => {
+    if (e.target === tipsModal) closeTips();
+  });
+  // Auto-show on first visit
+  try {
+    if (!localStorage.getItem(TIPS_SEEN_KEY)) openTips();
+  } catch (_) { openTips(); }
+
   // ─────────────────────────────────────────────────────────────
   // File upload
   // ─────────────────────────────────────────────────────────────
@@ -1140,6 +1404,374 @@
     wctx.strokeStyle = sch.inner;
     wctx.stroke();
   }
+
+  // ═════════════════════════════════════════════════════════════
+  // BACK SIDE (filter-inspection viewer)
+  //
+  // Self-contained module with INDEPENDENT state from the front.
+  // Each side has its own filter, rotation, zoom, pan, fit.
+  // Codex-confirmed architecture: keep `state` for front, expand `back`
+  // with its own filterIdx / rot / rotatedSrc rather than refactor
+  // into `state.sides`.
+  // ═════════════════════════════════════════════════════════════
+  const BACK_DISPLAY_MAX = 2400;
+
+  const back = {
+    img: null,                  // raw source (ImageBitmap or canvas)
+    imgW: 0, imgH: 0,
+    rot: 0,                     // 0 | 90 | 180 | 270 — independent of front rot
+    rotatedSrc: null,           // cached offscreen canvas after rotation
+    rotW: 0, rotH: 0,           // rotated dimensions (for fit + minimap)
+    filterIdx: 0,               // independent FILTER_MODES index for back
+    canvasW: 0, canvasH: 0,
+    baseScale: 1, scaleFinal: 1, zoom: 1,
+    offsetX: 0, offsetY: 0,
+    pointers: new Map(),
+    drag: null,
+    rafPending: false,
+    minimapDrag: false,
+    _mmOx: 0, _mmOy: 0, _mmScale: 1,
+  };
+
+  const backImgCanvas = $('back-img-canvas');
+  const backMinimapCanvas = $('back-minimap-canvas');
+  const backInput = $('back-input');
+  const backEmpty = $('back-empty');
+  const backCanvasWrap = $('back-canvas-wrap');
+  const backMinimapWrap = $('back-minimap-wrap');
+  const bctx = backImgCanvas.getContext('2d');
+  const bmctx = backMinimapCanvas.getContext('2d');
+
+  const setBackStatus = s => { const el = $('back-status'); if (el) el.textContent = s; };
+
+  function backRotatedDims() {
+    return (back.rot === 90 || back.rot === 270)
+      ? { w: back.imgH, h: back.imgW }
+      : { w: back.imgW, h: back.imgH };
+  }
+
+  function buildBackRotatedSource() {
+    if (!back.img) return;
+    if (back.rot === 0) {
+      back.rotW = back.imgW;
+      back.rotH = back.imgH;
+      back.rotatedSrc = back.img;
+      return;
+    }
+    const rd = backRotatedDims();
+    back.rotW = rd.w; back.rotH = rd.h;
+    const off = document.createElement('canvas');
+    off.width = rd.w; off.height = rd.h;
+    const c = off.getContext('2d');
+    c.translate(rd.w / 2, rd.h / 2);
+    c.rotate(back.rot * Math.PI / 180);
+    c.drawImage(back.img, -back.imgW / 2, -back.imgH / 2);
+    back.rotatedSrc = off;
+  }
+
+  const BACK_MM_CSS_W = 220, BACK_MM_CSS_H = 300;
+  backMinimapCanvas.width = BACK_MM_CSS_W * DPR;
+  backMinimapCanvas.height = BACK_MM_CSS_H * DPR;
+  backMinimapCanvas.style.width = BACK_MM_CSS_W + 'px';
+  backMinimapCanvas.style.height = BACK_MM_CSS_H + 'px';
+  bmctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  function backFitCanvas() {
+    if (!back.img) return;
+    const maxW = Math.max(280, backCanvasWrap.clientWidth);
+    const aspect = back.rotW / back.rotH;
+    let cw = maxW, ch = cw / aspect;
+    const maxH = window.innerHeight * 0.72;
+    if (ch > maxH) { ch = maxH; cw = ch * aspect; }
+    back.canvasW = Math.round(cw);
+    back.canvasH = Math.round(ch);
+    backImgCanvas.width = back.canvasW * DPR;
+    backImgCanvas.height = back.canvasH * DPR;
+    backImgCanvas.style.width = back.canvasW + 'px';
+    backImgCanvas.style.height = back.canvasH + 'px';
+    bctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    back.baseScale = back.canvasW / back.rotW;
+    back.scaleFinal = back.baseScale * back.zoom;
+  }
+
+  function backClampOffset() {
+    const viewW = back.canvasW / back.scaleFinal;
+    const viewH = back.canvasH / back.scaleFinal;
+    if (viewW >= back.rotW) back.offsetX = (back.rotW - viewW) / 2;
+    else back.offsetX = Math.max(0, Math.min(back.rotW - viewW, back.offsetX));
+    if (viewH >= back.rotH) back.offsetY = (back.rotH - viewH) / 2;
+    else back.offsetY = Math.max(0, Math.min(back.rotH - viewH, back.offsetY));
+  }
+
+  function backZoomAt(canvasPt, newZoom) {
+    newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
+    const before = { x: canvasPt.x / back.scaleFinal + back.offsetX, y: canvasPt.y / back.scaleFinal + back.offsetY };
+    back.zoom = newZoom;
+    back.scaleFinal = back.baseScale * back.zoom;
+    const after = { x: canvasPt.x / back.scaleFinal + back.offsetX, y: canvasPt.y / back.scaleFinal + back.offsetY };
+    back.offsetX += before.x - after.x;
+    back.offsetY += before.y - after.y;
+    backClampOffset();
+    $('back-zoom-display').textContent = Math.round(back.zoom * 100) + '%';
+    scheduleBackDraw();
+  }
+
+  function scheduleBackDraw() {
+    if (back.rafPending) return;
+    back.rafPending = true;
+    requestAnimationFrame(() => {
+      back.rafPending = false;
+      drawBack();
+    });
+  }
+
+  function drawBack() {
+    if (!back.img || !back.rotatedSrc) return;
+    const viewW = back.canvasW / back.scaleFinal;
+    const viewH = back.canvasH / back.scaleFinal;
+    bctx.fillStyle = '#0a0a0a';
+    bctx.fillRect(0, 0, back.canvasW, back.canvasH);
+    bctx.filter = FILTER_MODES[back.filterIdx].css;
+    bctx.drawImage(back.rotatedSrc,
+      back.offsetX, back.offsetY, viewW, viewH,
+      0, 0, back.canvasW, back.canvasH);
+    bctx.filter = 'none';
+    drawBackMinimap();
+  }
+
+  function drawBackMinimap() {
+    if (!back.img || !back.rotatedSrc) return;
+    const mw = BACK_MM_CSS_W, mh = BACK_MM_CSS_H;
+    const aspect = back.rotW / back.rotH;
+    let drawW = mw, drawH = mw / aspect;
+    if (drawH > mh) { drawH = mh; drawW = mh * aspect; }
+    const ox = (mw - drawW) / 2, oy = (mh - drawH) / 2;
+    const scale = drawW / back.rotW;
+    back._mmOx = ox; back._mmOy = oy; back._mmScale = scale;
+
+    bmctx.fillStyle = '#0a0a0a';
+    bmctx.fillRect(0, 0, mw, mh);
+    bmctx.filter = FILTER_MODES[back.filterIdx].css;
+    bmctx.drawImage(back.rotatedSrc, ox, oy, drawW, drawH);
+    bmctx.filter = 'none';
+
+    const vpX = ox + back.offsetX * scale;
+    const vpY = oy + back.offsetY * scale;
+    const vpW = (back.canvasW / back.scaleFinal) * scale;
+    const vpH = (back.canvasH / back.scaleFinal) * scale;
+    bmctx.fillStyle = 'rgba(255,255,255,0.1)';
+    bmctx.fillRect(vpX, vpY, vpW, vpH);
+    bmctx.strokeStyle = '#ffffff';
+    bmctx.lineWidth = 1.5;
+    bmctx.strokeRect(vpX, vpY, vpW, vpH);
+  }
+
+  // ─── Back image load (Upload / drag-drop / paste-style)
+  async function handleBackFile(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setBackStatus('Loading back image…');
+    try {
+      const bmp = await createImageBitmap(f, { imageOrientation: 'from-image' });
+      let w = bmp.width, h = bmp.height;
+      if (Math.max(w, h) <= BACK_DISPLAY_MAX) {
+        back.img = bmp;
+      } else {
+        const r = BACK_DISPLAY_MAX / Math.max(w, h);
+        w = Math.round(w * r); h = Math.round(h * r);
+        const off = document.createElement('canvas');
+        off.width = w; off.height = h;
+        const offCtx = off.getContext('2d');
+        offCtx.imageSmoothingEnabled = true;
+        offCtx.imageSmoothingQuality = 'high';
+        offCtx.drawImage(bmp, 0, 0, w, h);
+        bmp.close && bmp.close();
+        back.img = off;
+      }
+      back.imgW = w; back.imgH = h;
+      back.rot = 0;
+      back.zoom = 1; back.offsetX = 0; back.offsetY = 0;
+      buildBackRotatedSource();
+      backFitCanvas();
+      scheduleBackDraw();
+      backEmpty.style.display = 'none';
+      backMinimapWrap.style.display = '';
+      $('back-zoom-display').textContent = '100%';
+      setBackStatus('Back loaded — pinch/wheel to zoom; drag empty area to pan.');
+    } catch (err) {
+      setBackStatus('Failed to load back image: ' + err.message);
+    }
+    e.target.value = '';
+  }
+  backInput.addEventListener('change', handleBackFile);
+
+  // Tap empty / overlay to trigger file picker
+  backEmpty.addEventListener('click', () => backInput.click());
+
+  // Drag-and-drop
+  backCanvasWrap.addEventListener('dragover', e => {
+    e.preventDefault();
+    backCanvasWrap.style.outline = '2px dashed #facc15';
+    backCanvasWrap.style.outlineOffset = '-2px';
+  });
+  backCanvasWrap.addEventListener('dragleave', () => {
+    backCanvasWrap.style.outline = '';
+  });
+  backCanvasWrap.addEventListener('drop', e => {
+    e.preventDefault();
+    backCanvasWrap.style.outline = '';
+    if (e.dataTransfer.files?.[0]) {
+      handleBackFile({ target: { files: e.dataTransfer.files, value: '' } });
+    }
+  });
+
+  // ─── Back pointer events: pan + pinch zoom (no handles)
+  function backEventPoint(e) {
+    const rect = backImgCanvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  backImgCanvas.addEventListener('pointerdown', e => {
+    if (!back.img) return;
+    e.preventDefault();
+    backImgCanvas.setPointerCapture(e.pointerId);
+    const pt = backEventPoint(e);
+    back.pointers.set(e.pointerId, { pt });
+    if (back.pointers.size === 1) {
+      back.drag = { mode: 'pan', startPt: pt, startOffset: { x: back.offsetX, y: back.offsetY } };
+    } else if (back.pointers.size === 2) {
+      const pts = [...back.pointers.values()].map(p => p.pt);
+      const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      back.drag = {
+        mode: 'pinch',
+        startDist: dist || 1,
+        startZoom: back.zoom,
+        startMid: mid,
+        startOffset: { x: back.offsetX, y: back.offsetY },
+      };
+    }
+  });
+  backImgCanvas.addEventListener('pointermove', e => {
+    if (!back.pointers.has(e.pointerId)) return;
+    e.preventDefault();
+    const pt = backEventPoint(e);
+    back.pointers.set(e.pointerId, { pt });
+    if (!back.drag) return;
+    if (back.drag.mode === 'pan' && back.pointers.size === 1) {
+      const dx = pt.x - back.drag.startPt.x;
+      const dy = pt.y - back.drag.startPt.y;
+      back.offsetX = back.drag.startOffset.x - dx / back.scaleFinal;
+      back.offsetY = back.drag.startOffset.y - dy / back.scaleFinal;
+      backClampOffset();
+      scheduleBackDraw();
+    } else if (back.drag.mode === 'pinch' && back.pointers.size === 2) {
+      const pts = [...back.pointers.values()].map(p => p.pt);
+      const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      const ratio = dist / back.drag.startDist;
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, back.drag.startZoom * ratio));
+      const startScale = back.baseScale * back.drag.startZoom;
+      const startPt = {
+        x: back.drag.startMid.x / startScale + back.drag.startOffset.x,
+        y: back.drag.startMid.y / startScale + back.drag.startOffset.y,
+      };
+      back.zoom = newZoom;
+      back.scaleFinal = back.baseScale * back.zoom;
+      back.offsetX = startPt.x - mid.x / back.scaleFinal;
+      back.offsetY = startPt.y - mid.y / back.scaleFinal;
+      backClampOffset();
+      scheduleBackDraw();
+    }
+  });
+  const backEndPointer = e => {
+    back.pointers.delete(e.pointerId);
+    try { backImgCanvas.releasePointerCapture(e.pointerId); } catch (_) {}
+    if (back.pointers.size === 0) back.drag = null;
+    else if (back.pointers.size === 1 && back.drag && back.drag.mode === 'pinch') {
+      const remaining = [...back.pointers.values()][0].pt;
+      back.drag = { mode: 'pan', startPt: remaining, startOffset: { x: back.offsetX, y: back.offsetY } };
+    }
+  };
+  backImgCanvas.addEventListener('pointerup', backEndPointer);
+  backImgCanvas.addEventListener('pointercancel', backEndPointer);
+
+  backImgCanvas.addEventListener('wheel', e => {
+    if (!back.img) return;
+    e.preventDefault();
+    const factor = Math.pow(1.15, -Math.sign(e.deltaY));
+    backZoomAt(backEventPoint(e), back.zoom * factor);
+  }, { passive: false });
+
+  // Back minimap: click/drag to pan
+  function backMinimapPan(canvasPt) {
+    const rx = (canvasPt.x - back._mmOx) / back._mmScale;
+    const ry = (canvasPt.y - back._mmOy) / back._mmScale;
+    const viewW = back.canvasW / back.scaleFinal;
+    const viewH = back.canvasH / back.scaleFinal;
+    back.offsetX = rx - viewW / 2;
+    back.offsetY = ry - viewH / 2;
+    backClampOffset();
+    scheduleBackDraw();
+  }
+  function backMmPt(e) {
+    const rect = backMinimapCanvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+  backMinimapCanvas.addEventListener('pointerdown', e => {
+    if (!back.img) return;
+    e.preventDefault(); e.stopPropagation();
+    backMinimapCanvas.setPointerCapture(e.pointerId);
+    back.minimapDrag = true;
+    backMinimapPan(backMmPt(e));
+  });
+  backMinimapCanvas.addEventListener('pointermove', e => {
+    if (!back.minimapDrag) return;
+    e.preventDefault();
+    backMinimapPan(backMmPt(e));
+  });
+  const backMmEnd = e => {
+    back.minimapDrag = false;
+    try { backMinimapCanvas.releasePointerCapture(e.pointerId); } catch (_) {}
+  };
+  backMinimapCanvas.addEventListener('pointerup', backMmEnd);
+  backMinimapCanvas.addEventListener('pointercancel', backMmEnd);
+
+  // Resize observer
+  new ResizeObserver(() => {
+    if (back.img) { backFitCanvas(); backClampOffset(); scheduleBackDraw(); }
+  }).observe(backCanvasWrap);
+
+  // ─── Back toolbar handlers (all independent from front) ───
+
+  // Back filter cycle (independent from front filter)
+  $('back-filter-toggle').addEventListener('click', () => {
+    back.filterIdx = (back.filterIdx + 1) % FILTER_MODES.length;
+    $('back-filter-label').textContent = FILTER_MODES[back.filterIdx].label;
+    if (back.img) scheduleBackDraw();
+  });
+
+  // Back rotate 90° clockwise. Independent of front rot.
+  $('back-rotate').addEventListener('click', () => {
+    if (!back.img) return;
+    back.rot = (back.rot + 90) % 360;
+    buildBackRotatedSource();
+    backFitCanvas();
+    // Reset zoom/pan on rotation
+    back.zoom = 1; back.offsetX = 0; back.offsetY = 0;
+    back.scaleFinal = back.baseScale;
+    $('back-zoom-display').textContent = '100%';
+    scheduleBackDraw();
+  });
+
+  // Back Fit (reset back-only zoom + pan, keep rotation)
+  $('back-reset-view').addEventListener('click', () => {
+    if (!back.img) return;
+    back.zoom = 1; back.offsetX = 0; back.offsetY = 0;
+    back.scaleFinal = back.baseScale;
+    $('back-zoom-display').textContent = '100%';
+    scheduleBackDraw();
+  });
 })();
 </script>
 
@@ -1155,64 +1787,68 @@
   <div class="space-y-1.5 leading-relaxed max-w-3xl">
     <p><strong class="text-gray-400">Estimates only.</strong> This tool provides centering estimates from photos and is <strong>not affiliated with or endorsed by</strong> PSA, BGS, CGC, The Pokémon Company, Wizards of the Coast, or any card publisher or grading service.</p>
     <p><strong class="text-gray-400">Privacy.</strong> Images are processed entirely in your browser. No image data is uploaded to any server by this tool.</p>
-    <p><strong class="text-gray-400">Disclosure.</strong> Some buttons below are paid affiliate links. We may earn a commission if you purchase through them, at no extra cost to you. Each affiliate button is labeled <em>(paid link)</em>.</p>
   </div>
 
-  <!-- ────────── Affiliate buttons (PLACEHOLDERS — fill href after approval) ────────── -->
+  <!--
+    ────────── Affiliate buttons (HIDDEN UNTIL APPROVED) ──────────
+    Uncomment this block AND the affiliate-disclosure paragraph above
+    once TCGplayer / eBay affiliate URLs are ready. Replace href
+    placeholders with the approved affiliate links.
+
+  <p class="text-[11px] leading-relaxed max-w-3xl">
+    <strong class="text-gray-400">Disclosure.</strong> Some buttons
+    below are paid affiliate links. We may earn a commission if you
+    purchase through them, at no extra cost to you. Each affiliate
+    button is labeled <em>(paid link)</em>.
+  </p>
   <div class="pt-2">
     <p class="text-[10px] uppercase tracking-wider text-gray-600 mb-2">If this helped you decide on a grade:</p>
     <div class="flex flex-wrap gap-2">
-      <a href="#REPLACE_WITH_TCGPLAYER_AFFILIATE_URL" target="_blank" rel="sponsored nofollow noopener"
+      <a href="REPLACE_WITH_TCGPLAYER_AFFILIATE_URL" target="_blank" rel="sponsored nofollow noopener"
          class="btn btn-secondary text-xs">
         Search on TCGplayer <span class="text-gray-500">(paid link)</span>
       </a>
-      <a href="#REPLACE_WITH_EBAY_AFFILIATE_URL" target="_blank" rel="sponsored nofollow noopener"
+      <a href="REPLACE_WITH_EBAY_AFFILIATE_URL" target="_blank" rel="sponsored nofollow noopener"
          class="btn btn-secondary text-xs">
         Browse comps on eBay <span class="text-gray-500">(paid link)</span>
       </a>
     </div>
   </div>
 
-  <!-- ────────── Support + Feedback ────────── -->
+    ───────────────────────────────────────────────────────────
+  -->
+
+  <!-- ────────── Feedback + Support ────────── -->
   <div class="flex flex-wrap items-center gap-3 pt-2">
-    <a href="#REPLACE_WITH_KOFI_URL" target="_blank" rel="noopener"
-       class="btn btn-secondary text-xs hover:bg-pink-950">
-      ☕ Support on Ko-fi
-    </a>
-    <a href="#REPLACE_WITH_TALLY_OR_GOOGLE_FORM_URL" target="_blank" rel="noopener"
+    <a href="https://tally.so/r/NpR2XO" target="_blank" rel="noopener"
        class="btn btn-secondary text-xs">
       ✉ Send feedback
+    </a>
+    <a href="https://ko-fi.com/U8I72092XQ" target="_blank" rel="noopener">
+      <img height="36" style="border:0px;height:36px;"
+           src="https://storage.ko-fi.com/cdn/kofi5.png?v=6"
+           alt="Buy Me a Coffee at ko-fi.com" />
     </a>
   </div>
 
   <!--
-    ────────── Deployment checklist ──────────
+    ────────── Deployment status ──────────
 
-    Before going public, replace these placeholders in this footer:
+    ✓ Cloudflare Web Analytics: enabled (token in <head>)
+    ✓ Tally feedback: https://tally.so/r/NpR2XO
+    ✓ Ko-fi support button: https://ko-fi.com/U8I72092XQ
+    ☐ TCGplayer affiliate: pending approval
+    ☐ eBay affiliate: pending approval
 
-      1. #REPLACE_WITH_TCGPLAYER_AFFILIATE_URL
-         → Sign up at https://docs.tcgplayer.com/docs/tcgplayer-affiliate-program
-         → Paste your affiliate search URL here.
+    When affiliate URLs are ready, uncomment the affiliate block
+    above and replace REPLACE_WITH_TCGPLAYER_AFFILIATE_URL and
+    REPLACE_WITH_EBAY_AFFILIATE_URL with the approved links.
 
-      2. #REPLACE_WITH_EBAY_AFFILIATE_URL
-         → Sign up at https://partnernetwork.ebay.com
-         → Paste an EPN smart-link search URL for your locale.
+    Sign up:
+      - https://docs.tcgplayer.com/docs/tcgplayer-affiliate-program
+      - https://partnernetwork.ebay.com
 
-      3. #REPLACE_WITH_KOFI_URL
-         → Create page at https://ko-fi.com
-         → Paste your https://ko-fi.com/yourhandle URL.
-
-      4. #REPLACE_WITH_TALLY_OR_GOOGLE_FORM_URL
-         → Create a free form at https://tally.so (recommended) OR
-           https://forms.google.com
-         → Paste the form's public URL.
-
-      5. Cloudflare Web Analytics (in <head>):
-         → Enable Web Analytics for this domain in Cloudflare dashboard.
-         → Replace YOUR_CF_ANALYTICS_TOKEN with the issued token.
-         → Uncomment the <script> tag.
-
-    ──────────────────────────────────────────
+    ───────────────────────────────────────
   -->
 </footer>
 
