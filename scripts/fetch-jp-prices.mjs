@@ -20,7 +20,7 @@ const STATE = path.join(ROOT, 'prices_jp.state.json');
 
 const LIMIT = parseInt(process.argv[2] || '1000', 10);
 const START = parseInt(process.argv[3] || '0', 10);
-const DELAY_MS = 2000;
+const DELAY_MS = 1500;  // 0-delay caused Yahoo HTTP 500 soft-block; 1.5s safe
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36';
 const headers = {
@@ -165,11 +165,11 @@ async function main() {
     const rawResult = await fetchYahoo(rawQ);
     await sleep(DELAY_MS);
 
-    if (rawResult.status === 403 || rawResult.status === 429) {
+    if ([403, 429, 500, 502, 503].includes(rawResult.status)) {
       blockCount++;
-      console.log(`\n⚠️ Yahoo blocked at card ${i + 1}/${slice.length} (${cardKey}): HTTP ${rawResult.status}`);
-      console.log(`   Backing off 60s...`);
-      await sleep(60000);
+      const backoff = blockCount > 5 ? 600000 : 120000; // 10min after 5 blocks, else 2min
+      console.log(`\n⚠️ Yahoo error at card ${i + 1}/${slice.length} (${cardKey}): HTTP ${rawResult.status}. Backing off ${backoff/1000}s...`);
+      await sleep(backoff);
       i--; // retry this card
       continue;
     }
@@ -179,10 +179,10 @@ async function main() {
     const psaResult = await fetchYahoo(psaQ);
     await sleep(DELAY_MS);
 
-    if (psaResult.status === 403 || psaResult.status === 429) {
+    if ([403, 429, 500, 502, 503].includes(psaResult.status)) {
       blockCount++;
-      console.log(`\n⚠️ Yahoo blocked at card ${i + 1} (PSA10 query)`);
-      await sleep(60000);
+      console.log(`\n⚠️ Yahoo error at card ${i + 1} (PSA10 query): HTTP ${psaResult.status}`);
+      await sleep(120000);
     }
 
     if (rawResult.error && psaResult.error) {
