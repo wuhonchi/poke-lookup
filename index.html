@@ -567,6 +567,9 @@
   const V2_BAND_WIDTH    = 0.75;                     // CSS px (≈ DPR × 0.75 device px)
   const V2_IDEAL_WIDTH   = 1.1;                      // ideal line slightly thicker so dashes read
   const V2_DASH_PATTERN  = [9, 6];                   // visibly dashed at 1.1 px line
+  // Dash pattern for the 4-corner outer/inner handle quad. Distinct from the
+  // green ideal pattern so the eye separates them at a glance.
+  const HANDLE_QUAD_DASH = [10, 5];
   const V2_MODE_KEY      = 'cardjeng_mode_v1';
   // Per-axis idealMm persistence (Codex r-axes). On first load if only the
   // pre-v20 V2_IDEAL_KEY exists, copy it to BOTH new keys.
@@ -868,7 +871,9 @@
       const traceActive = state.v2TraceMode &&
         state.v2TraceOffsetsMm.some(o => Math.abs(o) > 0.001);
       if (!traceActive) {
-        drawQuad(state.outer, sch.outer);
+        // Corner-to-corner outer quad is a guide line; dashed reads as
+        // "user-defined reference" vs the solid orange offset bands.
+        drawQuad(state.outer, sch.outer, { dashed: true, dash: HANDLE_QUAD_DASH });
       }
       drawV2Bands(state.outer, state.idealMmLR, state.idealMmTB);
       drawHandles(state.outer, sch.outer, 'outer');
@@ -883,11 +888,13 @@
       // guide so the user can see how much fit deviates from raw input.
       drawQuad(state.outer, sch.outer + '55', { dashed: true });
       drawQuad(state.inner, sch.inner + '55', { dashed: true });
-      drawQuad(state.fittedOuter, sch.outer);
-      drawQuad(state.fittedInner, sch.inner);
+      // Fitted (measurement) lines: dashed so they don't compete visually
+      // with the card edges underneath.
+      drawQuad(state.fittedOuter, sch.outer, { dashed: true, dash: HANDLE_QUAD_DASH });
+      drawQuad(state.fittedInner, sch.inner, { dashed: true, dash: HANDLE_QUAD_DASH });
     } else {
-      drawQuad(state.outer, sch.outer);
-      drawQuad(state.inner, sch.inner);
+      drawQuad(state.outer, sch.outer, { dashed: true, dash: HANDLE_QUAD_DASH });
+      drawQuad(state.inner, sch.inner, { dashed: true, dash: HANDLE_QUAD_DASH });
     }
     drawHandles(state.outer, sch.outer, 'outer');
     drawHandles(state.inner, sch.inner, 'inner');
