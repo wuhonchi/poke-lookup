@@ -565,7 +565,8 @@
   const V2_IDEAL_STROKE  = '#22c55ECC';              // green dashed = ideal centred
   const V2_BAND_FILL     = 'rgba(249,115,22,0.06)';  // very light orange annulus tint
   const V2_BAND_WIDTH    = 0.75;                     // CSS px (≈ DPR × 0.75 device px)
-  const V2_DASH_PATTERN  = [3, 3];
+  const V2_IDEAL_WIDTH   = 1.1;                      // ideal line slightly thicker so dashes read
+  const V2_DASH_PATTERN  = [9, 6];                   // visibly dashed at 1.1 px line
   const V2_MODE_KEY      = 'cardjeng_mode_v1';
   // Per-axis idealMm persistence (Codex r-axes). On first load if only the
   // pre-v20 V2_IDEAL_KEY exists, copy it to BOTH new keys.
@@ -3228,7 +3229,7 @@
     const trustworthy = state.outerAutoDetected || state.outerUserEdited;
     const alpha = trustworthy ? '' : '66';
     const lwBand  = V2_BAND_WIDTH;
-    const lwIdeal = V2_BAND_WIDTH;
+    const lwIdeal = V2_IDEAL_WIDTH;   // thicker so the green dashes read clearly
 
     // Codex r-trace: when Trace edge mode is ON, switch from straight quads
     // to canonical-space curved Bezier overlays. The straight quads still
