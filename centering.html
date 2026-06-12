@@ -50,11 +50,18 @@
   .mode-btn.active { background: #22d3ee; color: #000; }
   .mode-btn:not(.active):hover { background: #1f2937; color: #e5e7eb; }
   .mode-btn:focus-visible { outline: 2px solid #facc15; outline-offset: -2px; }
-  .ideal-widget { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px;
-                  background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px; }
+  .ideal-widget { display: inline-flex; flex-direction: column; align-items: stretch; gap: 3px;
+                  padding: 4px 8px; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px; }
   .ideal-widget[hidden] { display: none; }
   .ideal-widget .btn { padding: 2px 9px; font-weight: 700; min-width: 26px; font-size: 14px; line-height: 1.2; }
-  #ideal-display { min-width: 60px; text-align: center; color: #facc15; }
+  .ideal-axis { display: flex; align-items: center; gap: 4px; }
+  .ideal-axis > span:first-child { min-width: 30px; }   /* axis label column */
+  #ideal-lr-display, #ideal-tb-display { min-width: 64px; text-align: center; color: #facc15; }
+  /* Side-by-side on wider screens so the toolbar stays compact when there's room. */
+  @media (min-width: 1280px) {
+    .ideal-widget { flex-direction: row; gap: 10px; }
+    .ideal-widget .ideal-axis + .ideal-axis { border-left: 1px solid #2a2a2a; padding-left: 10px; }
+  }
 
   /* On-screen D-pad for fine handle nudge — visible only when a
      handle is selected. Sits next to the Navigator minimap, OUTSIDE
@@ -177,14 +184,9 @@
 
 <div class="max-w-7xl mx-auto p-3 lg:p-6">
   <header class="mb-4">
-    <div class="flex items-baseline gap-3 flex-wrap justify-between">
-      <div class="flex items-baseline gap-3 flex-wrap">
-        <h1 class="display text-2xl lg:text-4xl">CardJeng</h1>
-        <p class="mono text-[10px] lg:text-xs text-gray-500 uppercase tracking-[0.2em]">centering analyzer</p>
-      </div>
-      <a href="index.html"
-         class="mono text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-sm border border-zinc-800 text-zinc-400 hover:border-yellow-300 hover:text-yellow-300 transition"
-         title="Go to POKÉ / FIND card search">/ Search</a>
+    <div class="flex items-baseline gap-3 flex-wrap">
+      <h1 class="display text-2xl lg:text-4xl">CardJeng</h1>
+      <p class="mono text-[10px] lg:text-xs text-gray-500 uppercase tracking-[0.2em]">centering analyzer</p>
     </div>
     <p class="text-xs lg:text-sm text-gray-400 mt-2 max-w-3xl">
       Upload a near-top-down photo of a trading card. Drag the
@@ -209,18 +211,38 @@
         <input type="file" id="file" accept="image/*" class="hidden" />
         Upload
       </label>
+      <button id="ai-upscale" class="btn btn-secondary" type="button" hidden
+              title="AI Upscale current photo 4× via self-hosted Real-ESRGAN. Useful for low-res Xianyu seller photos.">
+        ✨ AI Upscale
+      </button>
+      <button id="ai-config" class="btn btn-secondary" type="button" hidden
+              title="Configure AI Upscale tunnel URL + auth token. Stored in localStorage.">
+        ⚙
+      </button>
       <div class="mode-seg" role="tablist" aria-label="Measurement mode"
            title="Precise = manual 4 outer + 4 inner handles, full ratio.  Quick Band = 4 outer + PSA10 visual band overlay.">
         <button id="mode-precise" class="mode-btn active" role="tab" aria-selected="true" type="button">Precise</button>
         <button id="mode-quick"   class="mode-btn"        role="tab" aria-selected="false" type="button">Quick Band</button>
       </div>
       <div id="ideal-widget" class="ideal-widget" hidden
-           title="Per-side ideal border width (mm). PSA10 tolerance band is ±10% of this value.">
-        <span class="text-[11px] text-gray-400">Ideal</span>
-        <button id="ideal-dec" class="btn btn-secondary" aria-label="Decrease 0.05mm" type="button">−</button>
-        <span id="ideal-display" class="mono text-sm">2.50 mm</span>
-        <button id="ideal-inc" class="btn btn-secondary" aria-label="Increase 0.05mm" type="button">+</button>
+           title="Per-axis ideal border (mm). L/R and T/B can differ by card layout.">
+        <div class="ideal-axis">
+          <span class="text-[11px] text-gray-400">L/R</span>
+          <button id="ideal-lr-dec" class="btn btn-secondary" aria-label="Decrease L/R 0.05mm" type="button">−</button>
+          <span id="ideal-lr-display" class="mono text-sm">2.50 mm</span>
+          <button id="ideal-lr-inc" class="btn btn-secondary" aria-label="Increase L/R 0.05mm" type="button">+</button>
+        </div>
+        <div class="ideal-axis">
+          <span class="text-[11px] text-gray-400">T/B</span>
+          <button id="ideal-tb-dec" class="btn btn-secondary" aria-label="Decrease T/B 0.05mm" type="button">−</button>
+          <span id="ideal-tb-display" class="mono text-sm">2.50 mm</span>
+          <button id="ideal-tb-inc" class="btn btn-secondary" aria-label="Increase T/B 0.05mm" type="button">+</button>
+        </div>
       </div>
+      <button id="trace-toggle" class="btn btn-secondary" hidden type="button"
+              title="Trace edge: drag a small green mid-handle per side to gently bow the band along the photo's apparent curve. Visual only — verdict still computed from the 4 corners.">Trace: <span id="trace-label">OFF</span></button>
+      <button id="trace-reset" class="btn btn-secondary" hidden type="button"
+              title="Reset all 4 trace mid handles back to straight (offset = 0).">Reset trace</button>
       <button id="rotate" class="btn btn-secondary" title="Rotate front 90° clockwise">⟳ Rotate</button>
       <button id="filter-toggle" class="btn btn-secondary" title="Cycle front-image filter (display only — doesn't change measurements)">Filter: <span id="filter-label">Normal</span></button>
       <button id="color-toggle" class="btn btn-secondary" title="Cycle handle colour scheme">Colors: <span id="color-label">Cyan/Yellow</span></button>
@@ -272,19 +294,29 @@
            active. Visual-only mode: no auto inner detection, no PSA grade. -->
       <div id="v2-stats" class="stat" style="display:none;">
         <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Quick Band — PSA10 visual reference</div>
-        <div class="mono text-sm">Ideal border <span id="v2-current-ideal" class="text-cyan-300 font-bold">2.50</span> mm</div>
-        <div class="mono text-sm mt-1">PSA10 zone (±10 %): <span id="v2-tolerance-range" class="text-cyan-300 font-bold">2.25–2.75</span> mm</div>
+        <div class="mono text-sm">Ideal border <span id="v2-current-ideal" class="text-green-400 font-bold">2.50</span> mm <span class="text-[10px] text-gray-500">(L/R / T/B)</span></div>
+        <div class="mono text-sm mt-1">PSA10 zone (±10 %): <span id="v2-tolerance-range" class="text-orange-400 font-bold">2.25–2.75</span> mm</div>
         <div class="text-[11px] text-gray-500 mt-2 leading-snug">
-          The cyan band is the PSA10-acceptable range, drawn parallel to the
-          card's cut edges. <strong>Visually compare</strong> where the
-          printed inner border falls:
-          <span class="text-green-400">inside the band</span> → PSA10 candidate;
-          <span class="text-amber-400">on the line</span> → borderline;
-          <span class="text-red-400">outside</span> → likely below PSA10.
+          The <span class="text-orange-400">orange-red</span> lines are the
+          PSA10 boundary; the <span class="text-green-400">green dashed</span>
+          line is the ideal centred position. <strong>Visually compare</strong>
+          where the printed inner border falls:
+          <span class="text-green-400">between green and orange lines</span> → PSA10 candidate;
+          <span class="text-orange-400">touching the orange line</span> → borderline;
+          <span class="text-red-400">outside the orange line</span> → likely below PSA10.
         </div>
         <div class="text-[10px] text-gray-500 mt-2 leading-snug">
           Note: print-vs-cut rotation is <strong>not measured</strong> in Quick
           Band. For sub-mm precision switch to Precise mode (8 handles).
+        </div>
+        <div id="v2-trace-info" class="mt-2 pt-2 border-t border-zinc-800" style="display:none;">
+          <div class="mono text-[11px]">
+            Trace offset (T·R·B·L): <span id="v2-trace-offsets" class="text-green-400">0.00 · 0.00 · 0.00 · 0.00</span> mm
+          </div>
+          <div id="v2-trace-warn" class="text-[10px] mt-1" style="display:none;"></div>
+          <div class="text-[10px] text-gray-500 mt-1 leading-snug">
+            Visual only · ratio + verdict unchanged · resets to straight when offset = 0
+          </div>
         </div>
       </div>
       <div id="v1-stats" class="grid grid-cols-2 gap-3">
@@ -500,11 +532,28 @@
   const V2_IDEAL_MAX = 5.0;
   const V2_IDEAL_STEP = 0.05;
   const V2_TOLERANCE_PCT = 0.10;          // PSA10 ±10% (= 55/45 cap on worst side)
-  const V2_BAND_STROKE = '#22d3ee';        // cyan band boundaries
-  const V2_IDEAL_STROKE = '#22d3eeAA';     // translucent ideal mid-line
-  const V2_BAND_FILL   = 'rgba(34,211,238,0.10)';
-  const V2_MODE_KEY    = 'cardjeng_mode_v1';
-  const V2_IDEAL_KEY   = 'cardjeng_ideal_mm_v1';
+  // Codex r-color: orange-red boundaries = "alert" zone (don't cross),
+  // green dashed ideal = the safe target. Orange-red instead of pure red
+  // so it doesn't fight the Pokemon yellow border or look too aggressive.
+  const V2_BAND_STROKE   = '#f97316';                // boundary lines (PSA10 inner/outer)
+  const V2_IDEAL_STROKE  = '#22c55ECC';              // green dashed = ideal centred
+  const V2_BAND_FILL     = 'rgba(249,115,22,0.06)';  // very light orange annulus tint
+  const V2_BAND_WIDTH    = 0.75;                     // CSS px (≈ DPR × 0.75 device px)
+  const V2_DASH_PATTERN  = [3, 3];
+  const V2_MODE_KEY      = 'cardjeng_mode_v1';
+  // Per-axis idealMm persistence (Codex r-axes). On first load if only the
+  // pre-v20 V2_IDEAL_KEY exists, copy it to BOTH new keys.
+  const V2_IDEAL_LR_KEY  = 'cardjeng_ideal_mm_lr_v1';
+  const V2_IDEAL_TB_KEY  = 'cardjeng_ideal_mm_tb_v1';
+  const V2_IDEAL_KEY     = 'cardjeng_ideal_mm_v1';   // legacy fallback only
+
+  // V2 Trace edge (Codex r-trace).
+  const V2_TRACE_KEY        = 'cardjeng_v2_trace_mode_v1';
+  const V2_TRACE_WARN_MM    = 1.5;     // amber: meaningful bow
+  const V2_TRACE_HIGH_MM    = 3.0;     // red:   likely placement error or bad photo
+  const V2_BEZIER_SAMPLES   = 24;      // polyline points along each canonical Bezier
+  const V2_MID_STROKE       = '#22c55e';            // green, matches ideal line family
+  const V2_GHOST_ALPHA      = '44';                  // hex alpha for ghost straight band
 
   const state = {
     lockTimer: null,        // setTimeout handle for handle auto-lock after idle
@@ -531,17 +580,35 @@
     // ── V2 "Quick Band" mode ───────────────────────────────────
     // 'precise' (default V1: 4 outer + 4 inner manual handles + Refine option)
     //   vs 'quick' (V2: 4 outer + auto-drawn PSA10 visual band overlay).
-    // idealMm = per-side reference border (mm) used to compute the band.
+    // idealMmLR / idealMmTB = per-AXIS ideal border (mm). Pokemon cards can
+    //   have asymmetric L/R vs T/B by design (e.g. SWSH075 reference T/B ≈
+    //   60-64/36 vs L/R 49/51). User adjusts each independently with ±0.05mm
+    //   step; both default to 2.5mm.
     // outerAutoDetected = true if the current outer came from autoDetectOuter();
     // outerUserEdited = true once the user has dragged or nudged any outer handle.
     // innerUserEdited = true once the user has dragged any inner / inner-mid;
     //   when switching Quick → Precise we auto-place inner at the ideal band IF
     //   the user has not previously edited it.
     mode: 'precise',
-    idealMm: 2.5,
+    idealMmLR: 2.5,
+    idealMmTB: 2.5,
     outerAutoDetected: false,
     outerUserEdited: false,
     innerUserEdited: false,
+    // V2 Trace edge mode (Codex r-trace confirmation pass).
+    // v2TraceMode = opt-in toggle. When ON, 4 mid handles appear, one per side
+    //   of the OUTER edge. Dragging a mid shifts ALL 3 band lines for that side
+    //   (PSA10 outer / ideal / PSA10 inner) by the same canonical-mm offset, so
+    //   the visual band tracks slight bow from lens / card warp. Math (verdict +
+    //   homography) is UNCHANGED — still based on 4 corners.
+    // v2TraceOffsetsMm[s] = perpendicular bow at the side's midpoint, in
+    //   canonical mm. s in {0:T, 1:R, 2:B, 3:L}. Positive = inward toward card
+    //   centre. Backward compat: when all 0, drawing is identical to the
+    //   existing straight v21 path.
+    // v2TraceEdited[s] = true once user has dragged the mid for side s.
+    v2TraceMode: false,
+    v2TraceOffsetsMm: [0, 0, 0, 0],
+    v2TraceEdited: [false, false, false, false],
     view: {
       zoom: 1,
       offsetX: 0, offsetY: 0,
@@ -564,6 +631,18 @@
   const octx = overlayCanvas.getContext('2d');
   const mctx = minimapCanvas.getContext('2d');
   const wctx = warpCanvas.getContext('2d');
+
+  // Display-only smoothing for low-res seller photos (e.g. Xianyu uploads at
+  // 800-1200 px). High-quality smoothing reduces pixelation when the canvas
+  // upscales the source on zoom, WITHOUT changing the underlying image-coord
+  // measurement system (handles still placed in source-image floating-point
+  // coords). This is NOT super-resolution — no new information is invented.
+  ctx.imageSmoothingEnabled  = true;
+  ctx.imageSmoothingQuality  = 'high';
+  mctx.imageSmoothingEnabled = true;
+  mctx.imageSmoothingQuality = 'high';
+  wctx.imageSmoothingEnabled = true;
+  wctx.imageSmoothingQuality = 'high';
 
   const setStatus = s => $('status').textContent = s;
 
@@ -724,11 +803,18 @@
 
     if (state.mode === 'quick') {
       // ── Quick Band mode (V2) ───────────────────────────────────
-      // Draw only the outer quad + visual PSA10 band overlay. Inner
-      // handles are hidden; the band itself is the visual reference.
-      drawQuad(state.outer, sch.outer);
+      // Codex r-trace-cyan: when Trace is ON + has non-zero offset, the cyan
+      // outer edge is drawn as a curve INSIDE drawV2Bands (not here as a
+      // straight quad). Otherwise draw the straight cyan quad as usual.
+      // Corner handles drawn AFTER drawV2Bands so the curved cyan stroke
+      // doesn't paint over them.
+      const traceActive = state.v2TraceMode &&
+        state.v2TraceOffsetsMm.some(o => Math.abs(o) > 0.001);
+      if (!traceActive) {
+        drawQuad(state.outer, sch.outer);
+      }
+      drawV2Bands(state.outer, state.idealMmLR, state.idealMmTB);
       drawHandles(state.outer, sch.outer, 'outer');
-      drawV2Bands(state.outer, state.idealMm);
       drawCountdown();
       drawMinimap();
       return;
@@ -767,8 +853,16 @@
     });
     octx.closePath();
     octx.strokeStyle = color;
-    octx.lineWidth = (opts && opts.dashed) ? 1 : 1.5;
-    if (opts && opts.dashed) octx.setLineDash([4, 4]); else octx.setLineDash([]);
+    // Codex r-color: opts.lineWidth + opts.dash override the V1 defaults
+    // so V2 thin lines (0.75 CSS px) don't change V1 handle / quad weights.
+    const defaultLW = (opts && opts.dashed) ? 1 : 1.5;
+    octx.lineWidth = (opts && typeof opts.lineWidth === 'number') ? opts.lineWidth : defaultLW;
+    if (opts && opts.dashed) {
+      const dash = (opts && Array.isArray(opts.dash)) ? opts.dash : [4, 4];
+      octx.setLineDash(dash);
+    } else {
+      octx.setLineDash([]);
+    }
     octx.stroke();
     if (opts && opts.dashed) octx.setLineDash([]);
   }
@@ -945,6 +1039,10 @@
       if (state.innerMid && state.innerMid.length === 8) tryHits('innerMid', state.innerMid, 8);
       if (state.outerMid && state.outerMid.length === 8) tryHits('outerMid', state.outerMid, 8);
     }
+    // V2 Trace edge mids — only hit-test when V2 + Trace ON + cache exists.
+    if (state.mode === 'quick' && state.v2TraceMode && state._v2TraceMidsCache) {
+      tryHits('v2TraceMid', state._v2TraceMidsCache, 4);
+    }
     return best;
   }
 
@@ -1076,6 +1174,30 @@
       const ip = canvasToImage(pt);
       ip.x = Math.max(0, Math.min(state.imgW, ip.x));
       ip.y = Math.max(0, Math.min(state.imgH, ip.y));
+
+      // V2 Trace edge mid handle: convert pointer → canonical-mm offset
+      // for that side. The handle is CONSTRAINED to the side normal — the
+      // tangential component of user drag is ignored, only the perpendicular
+      // bow is recorded. This keeps mids meaningful as "how much I bowed this
+      // side" rather than as free 2D points.
+      if (state.drag.set === 'v2TraceMid') {
+        const bands = computeV2Bands(state.outer, state.idealMmLR, state.idealMmTB);
+        if (bands) {
+          const s = state.drag.idx;
+          let off = v2ImagePointToTraceOffsetMm(bands, s, ip);
+          // Clamp at the strong-warn cap so users can't drag past sane values.
+          const cap = V2_TRACE_HIGH_MM + 1;
+          if (off > cap)  off = cap;
+          if (off < -cap) off = -cap;
+          state.v2TraceOffsetsMm[s] = off;
+          state.v2TraceEdited[s] = true;
+        }
+        // Stop the lock timer / etc. by jumping straight to render.
+        startLockTimer();
+        scheduleDraw();
+        return;
+      }
+
       const prev = state[state.drag.set][state.drag.idx];
       // Only restart the lock timer when there's meaningful movement
       // (>0.5 image px). Sub-pixel jitter from finger tremor shouldn't
@@ -1447,6 +1569,190 @@
   }
   $('file').addEventListener('change', handleImageFile);
 
+  // ─────────────────────────────────────────────────────────────
+  // AI Upscale (self-hosted Real-ESRGAN via Cloudflare Tunnel)
+  // ─────────────────────────────────────────────────────────────
+  const UPSCALE_LS_URL = 'cardjeng.upscaleUrl';
+  const UPSCALE_LS_TOKEN = 'cardjeng.upscaleToken';
+
+  function getUpscaleConfig() {
+    return {
+      url: localStorage.getItem(UPSCALE_LS_URL) || '',
+      token: localStorage.getItem(UPSCALE_LS_TOKEN) || '',
+    };
+  }
+
+  function configureUpscale() {
+    const cur = getUpscaleConfig();
+    const url = prompt(
+      'Upscale server URL (e.g. https://xxxx.trycloudflare.com):',
+      cur.url
+    );
+    if (url === null) return;          // cancel
+    // Token optional now — empty = anonymous (server allows it)
+    const token = prompt('Bearer token (leave blank if server has no auth):',
+                         cur.token);
+    if (token === null) return;
+    localStorage.setItem(UPSCALE_LS_URL, url.replace(/\/$/, ''));
+    localStorage.setItem(UPSCALE_LS_TOKEN, token || '');
+    setStatus('AI Upscale: config saved.');
+    refreshUpscaleButton();
+  }
+
+  function refreshUpscaleButton() {
+    const { url } = getUpscaleConfig();
+    const btn = $('ai-upscale');
+    if (!btn) return;
+    // Hidden unless: dev mode + image loaded + URL configured
+    let isDev = false;
+    try { isDev = localStorage.getItem('cardjeng.devMode') === '1'; } catch (_) {}
+    btn.hidden = !isDev || !state.img || !url;
+  }
+
+  async function aiUpscaleCurrent() {
+    const { url, token } = getUpscaleConfig();
+    if (!url) {
+      setStatus('AI Upscale: not configured. Click ⚙ to set URL.');
+      return;
+    }
+    if (!state.img) {
+      setStatus('Upload a photo first.');
+      return;
+    }
+    const btn = $('ai-upscale');
+    btn.disabled = true;
+    const origLabel = btn.textContent;
+    try {
+      // 1) Encode current image to JPEG blob
+      setStatus('AI Upscale: encoding…');
+      const w = state.imgW, h = state.imgH;
+      const enc = document.createElement('canvas');
+      enc.width = w; enc.height = h;
+      const ectx = enc.getContext('2d');
+      ectx.drawImage(state.img, 0, 0, w, h);
+      const blob = await new Promise((resolve, reject) =>
+        enc.toBlob(b => b ? resolve(b) : reject(new Error('toBlob null')),
+                   'image/jpeg', 0.92));
+      btn.textContent = `✨ Uploading ${(blob.size/1024).toFixed(0)} KB…`;
+
+      // 2) POST /jobs
+      const form = new FormData();
+      form.append('file', blob, 'card.jpg');
+      const submitResp = await fetch(`${url}/jobs`, {
+        method: 'POST',
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        body: form,
+      });
+      if (!submitResp.ok) {
+        const t = await submitResp.text().catch(() => '');
+        throw new Error(`POST /jobs HTTP ${submitResp.status} ${t.slice(0, 120)}`);
+      }
+      const { job_id } = await submitResp.json();
+      setStatus(`AI Upscale: job ${job_id.slice(0, 8)}… queued`);
+
+      // 3) Poll
+      let lastProg = -1;
+      while (true) {
+        await new Promise(r => setTimeout(r, 2000));
+        const sResp = await fetch(`${url}/jobs/${job_id}`, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        });
+        if (!sResp.ok) throw new Error(`Poll HTTP ${sResp.status}`);
+        const s = await sResp.json();
+        if (s.status === 'done') break;
+        if (s.status === 'failed') throw new Error('Server failed: ' + (s.error || 'unknown'));
+        if (s.status === 'cancelled') throw new Error('Job cancelled');
+        if (s.progress !== undefined && s.progress !== lastProg) {
+          lastProg = s.progress;
+          const pct = Math.round(s.progress * 100);
+          btn.textContent = `✨ ${pct}% (${s.elapsed?.toFixed(0) || '?'}s)`;
+        }
+      }
+
+      // 4) Fetch result
+      btn.textContent = '✨ Downloading result…';
+      const rResp = await fetch(`${url}/jobs/${job_id}/result`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      });
+      if (!rResp.ok) throw new Error(`GET result HTTP ${rResp.status}`);
+      const resultBlob = await rResp.blob();
+      btn.textContent = `✨ Decoding ${(resultBlob.size/1e6).toFixed(1)} MB…`;
+
+      // 5) Decode and replace state.img
+      const newBmp = await createImageBitmap(resultBlob, { imageOrientation: 'from-image' });
+      const ow = newBmp.width, oh = newBmp.height;
+
+      // If larger than DISPLAY_MAX, downscale to a canvas (same logic as handleImageFile)
+      if (Math.max(ow, oh) <= DISPLAY_MAX) {
+        state.img = newBmp;
+        state.imgW = ow; state.imgH = oh;
+      } else {
+        const r = DISPLAY_MAX / Math.max(ow, oh);
+        const dw = Math.round(ow * r), dh = Math.round(oh * r);
+        const off = document.createElement('canvas');
+        off.width = dw; off.height = dh;
+        const off_ctx = off.getContext('2d');
+        off_ctx.imageSmoothingEnabled = true;
+        off_ctx.imageSmoothingQuality = 'high';
+        off_ctx.drawImage(newBmp, 0, 0, dw, dh);
+        newBmp.close && newBmp.close();
+        state.img = off;
+        state.imgW = dw; state.imgH = dh;
+      }
+
+      // 6) Re-run the post-load chain (same as handleImageFile)
+      state.lockedHandle = null;
+      clearLockTimer();
+      state.view.rot = 0;
+      state.view.zoom = 1;
+      state.view.offsetX = 0;
+      state.view.offsetY = 0;
+      buildRotatedSource();
+      fitCanvas();
+      resetHandles();
+      recomputeScale();
+      scheduleDraw();
+
+      setStatus(`AI Upscale: done. ${w}×${h} → ${ow}×${oh}, ${(resultBlob.size/1e6).toFixed(1)} MB`);
+    } catch (err) {
+      setStatus('AI Upscale FAILED: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = origLabel;
+      refreshUpscaleButton();
+    }
+  }
+
+  $('ai-upscale').addEventListener('click', aiUpscaleCurrent);
+  $('ai-config').addEventListener('click', configureUpscale);
+  // Re-evaluate button visibility whenever the image changes (cheap polling).
+  setInterval(refreshUpscaleButton, 500);
+
+  // ── Dev gate ────────────────────────────────────────────────
+  // AI Upscale + ⚙ buttons only appear when:
+  //   ?dev=1 in URL (browser-side test), OR
+  //   localStorage.cardjeng.devMode === '1' (sticky for this device)
+  // This keeps public cardjeng.pages.dev visitors from seeing/abusing
+  // a personal Real-ESRGAN tunnel URL once it's been configured.
+  (function devGate() {
+    const params = new URLSearchParams(location.search);
+    if (params.get('dev') === '1') {
+      try { localStorage.setItem('cardjeng.devMode', '1'); } catch (_) {}
+    }
+    if (params.get('dev') === '0') {
+      try { localStorage.removeItem('cardjeng.devMode'); } catch (_) {}
+    }
+    const isDev = (() => {
+      try { return localStorage.getItem('cardjeng.devMode') === '1'; }
+      catch (_) { return false; }
+    })();
+    if (isDev) {
+      $('ai-config').hidden = false;
+      // ai-upscale still depends on having a configured URL + loaded image;
+      // refreshUpscaleButton handles that.
+    }
+  })();
+
   function resetHandles() {
     const w = state.imgW, h = state.imgH;
 
@@ -1454,6 +1760,10 @@
     state.outerAutoDetected = false;
     state.outerUserEdited = false;
     state.innerUserEdited = false;
+    // Also reset trace offsets — they're per-image, not persisted across uploads.
+    state.v2TraceOffsetsMm = [0, 0, 0, 0];
+    state.v2TraceEdited    = [false, false, false, false];
+    if (typeof refreshV2TraceUI === 'function') refreshV2TraceUI();
 
     // Try classical-CV auto-seed for the outer cyan corners.
     let detected = null;
@@ -2260,6 +2570,12 @@
   const backMinimapWrap = $('back-minimap-wrap');
   const bctx = backImgCanvas.getContext('2d');
   const bmctx = backMinimapCanvas.getContext('2d');
+  // Display-only smoothing — same rationale as the front canvas: helps when
+  // the back image is a low-res seller photo and the user pinch-zooms in.
+  bctx.imageSmoothingEnabled  = true;
+  bctx.imageSmoothingQuality  = 'high';
+  bmctx.imageSmoothingEnabled = true;
+  bmctx.imageSmoothingQuality = 'high';
 
   const setBackStatus = s => { const el = $('back-status'); if (el) el.textContent = s; };
 
@@ -2649,12 +2965,18 @@
   }
 
   // Compute the 3 V2 inset polygons in IMAGE coordinates given the outer
-  // quad + ideal-mm. Returns { outerBand, idealLine, innerBand } where
-  // each is an array of 4 image-space points, OR null if input is invalid.
-  function computeV2Bands(outer, idealMm) {
+  // quad + per-axis ideal-mm. Returns { outerBand, idealLine, innerBand } or
+  // null if input is invalid.
+  //
+  // Codex r-axes: idealMmLR is the ideal inset on the card's L/R sides (the
+  // 63 mm short dimension); idealMmTB is for the T/B sides (88 mm long).
+  // When `pickFrame` reports the card lying landscape (the 88mm dimension is
+  // now horizontal), we SWAP the per-axis values so each ideal still applies
+  // to its physical card side regardless of photo orientation.
+  function computeV2Bands(outer, idealMmLR, idealMmTB) {
     if (!validateOuterQuad(outer)) return null;
-    if (!(idealMm > 0)) return null;
-    const frame = pickFrame(outer);                 // {TW, TH, wMm, hMm, ...}
+    if (!(idealMmLR > 0) || !(idealMmTB > 0)) return null;
+    const frame = pickFrame(outer);                 // {TW, TH, wMm, hMm, landscape, ...}
     const dst = [
       { x: 0,         y: 0 },
       { x: frame.TW,  y: 0 },
@@ -2667,14 +2989,19 @@
     if (!Hinv) return null;
     const sX = frame.TW / frame.wMm;                // canonical px per mm (x)
     const sY = frame.TH / frame.hMm;                // canonical px per mm (y)
-    const insets = [
-      idealMm * (1 - V2_TOLERANCE_PCT),             // PSA10 outer-edge
-      idealMm,                                       // ideal
-      idealMm * (1 + V2_TOLERANCE_PCT),             // PSA10 inner-edge
+    // Map per-axis ideals to canonical axes via the landscape flag:
+    //   portrait : x = 63 mm = L/R side;  y = 88 mm = T/B side
+    //   landscape: x = 88 mm = T/B side;  y = 63 mm = L/R side
+    const mmAlongX = frame.landscape ? idealMmTB : idealMmLR;
+    const mmAlongY = frame.landscape ? idealMmLR : idealMmTB;
+    const factors = [
+      1 - V2_TOLERANCE_PCT,                          // PSA10 outer-edge
+      1,                                              // ideal
+      1 + V2_TOLERANCE_PCT,                          // PSA10 inner-edge
     ];
     const warp = q => q.map(p => applyH(Hinv, p));
-    const rectInsetMm = mm => {
-      const ix = mm * sX, iy = mm * sY;
+    const rectInsetMm = (mmX, mmY) => {
+      const ix = mmX * sX, iy = mmY * sY;
       return [
         { x: ix,             y: iy },
         { x: frame.TW - ix,  y: iy },
@@ -2683,11 +3010,132 @@
       ];
     };
     return {
-      outerBand: warp(rectInsetMm(insets[0])),
-      idealLine: warp(rectInsetMm(insets[1])),
-      innerBand: warp(rectInsetMm(insets[2])),
+      outerBand: warp(rectInsetMm(mmAlongX * factors[0], mmAlongY * factors[0])),
+      idealLine: warp(rectInsetMm(mmAlongX * factors[1], mmAlongY * factors[1])),
+      innerBand: warp(rectInsetMm(mmAlongX * factors[2], mmAlongY * factors[2])),
       frame,
+      // ── Trace edge helpers (Codex r-trace, canonical-space math) ──────────
+      // Expose forward and inverse homography + per-axis scale + the canonical
+      // rectangles for each band level. Used by drawCurvedV2Bands() to add a
+      // bow at each side's midpoint based on state.v2TraceOffsetsMm.
+      H, Hinv, sX, sY,
+      canonicalOuterRect: rectInsetMm(mmAlongX * factors[0], mmAlongY * factors[0]),
+      canonicalIdealRect: rectInsetMm(mmAlongX * factors[1], mmAlongY * factors[1]),
+      canonicalInnerRect: rectInsetMm(mmAlongX * factors[2], mmAlongY * factors[2]),
+      canonicalOuterEdge: [
+        { x: 0,         y: 0 },
+        { x: frame.TW,  y: 0 },
+        { x: frame.TW,  y: frame.TH },
+        { x: 0,         y: frame.TH },
+      ],
     };
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // V2 Trace edge — canonical curved-band derivation (Codex r-trace)
+  // ─────────────────────────────────────────────────────────────
+  // Side index: 0 = T (top, normal points +y inward), 1 = R (normal -x),
+  //             2 = B (normal -y), 3 = L (normal +x). These match
+  //             pickHandle / drag conventions so the same `offsetsMm[s]`
+  //             value represents inward bow regardless of side.
+  function _v2SideNormalCanonical(s) {
+    if (s === 0) return { x: 0, y: 1 };
+    if (s === 1) return { x: -1, y: 0 };
+    if (s === 2) return { x: 0, y: -1 };
+    /* s === 3 */ return { x: 1, y: 0 };
+  }
+
+  // For a side s of a canonical rectangle [TL, TR, BR, BL], return
+  // {a, b, mid} where a/b are the two corners and mid is the t=0.5 point.
+  function _v2SideEndpoints(rect, s) {
+    const a = rect[s];
+    const b = rect[(s + 1) % 4];
+    return {
+      a, b,
+      mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+    };
+  }
+
+  // Sample a quadratic Bezier in canonical space and warp each sample to
+  // image coords. The Bezier control point is chosen so the curve passes
+  // through `mid` at t=0.5: C = 2*M − 0.5*(P0 + P1).
+  function _v2BezierToImage(P0, mid, P1, Hinv, samples = V2_BEZIER_SAMPLES) {
+    const C = {
+      x: 2 * mid.x - 0.5 * (P0.x + P1.x),
+      y: 2 * mid.y - 0.5 * (P0.y + P1.y),
+    };
+    const out = [];
+    for (let i = 0; i <= samples; i++) {
+      const t = i / samples;
+      const omt = 1 - t;
+      const qx = omt * omt * P0.x + 2 * omt * t * C.x + t * t * P1.x;
+      const qy = omt * omt * P0.y + 2 * omt * t * C.y + t * t * P1.y;
+      out.push(applyH(Hinv, { x: qx, y: qy }));
+    }
+    return out;
+  }
+
+  // Build the curved band paths (polyline samples) for each band level given
+  // canonical rectangles + per-side offsets in mm + the homography helpers.
+  // Returns { outerPath, idealPath, innerPath, traceMidsImage } where each
+  // *Path is a flat array of {x,y} image-coord points tracing the full closed
+  // polygon (all 4 sides concatenated), and traceMidsImage is the 4 image-
+  // space user-mid positions (for drawing handles).
+  function buildV2TracedBands(bands, offsetsMm) {
+    if (!bands) return null;
+    const { Hinv, sX, sY,
+            canonicalOuterRect, canonicalIdealRect, canonicalInnerRect,
+            canonicalOuterEdge, frame } = bands;
+    const tracePathFor = (rect) => {
+      const path = [];
+      for (let s = 0; s < 4; s++) {
+        const { a, b, mid } = _v2SideEndpoints(rect, s);
+        const n = _v2SideNormalCanonical(s);
+        // Use sX for horizontal-normal sides, sY for vertical-normal sides.
+        // Top/Bottom have ±y normal → use sY. Left/Right have ±x normal → use sX.
+        const sFactor = (s === 0 || s === 2) ? sY : sX;
+        const off = offsetsMm[s] * sFactor;
+        const curvedMid = { x: mid.x + n.x * off, y: mid.y + n.y * off };
+        const samples = _v2BezierToImage(a, curvedMid, b, Hinv);
+        // Skip the last point on each side except the final side to avoid
+        // duplicate vertices at the corners.
+        const upTo = (s === 3) ? samples.length : samples.length - 1;
+        for (let i = 0; i < upTo; i++) path.push(samples[i]);
+      }
+      return path;
+    };
+    const outerPath = tracePathFor(canonicalOuterRect);
+    const idealPath = tracePathFor(canonicalIdealRect);
+    const innerPath = tracePathFor(canonicalInnerRect);
+    // Codex r-trace-cyan: also build the curved CYAN OUTER EDGE so it bows
+    // with the trace. Same Bezier math, canonical inset = 0.
+    const outerEdgePath = tracePathFor(canonicalOuterEdge);
+    // Mid handles sit on the OUTER (user-controlled) edge. Compute image
+    // positions = warp of curved midpoints on the outer edge.
+    const traceMidsImage = [];
+    for (let s = 0; s < 4; s++) {
+      const { mid } = _v2SideEndpoints(canonicalOuterEdge, s);
+      const n = _v2SideNormalCanonical(s);
+      const sFactor = (s === 0 || s === 2) ? sY : sX;
+      const off = offsetsMm[s] * sFactor;
+      const curvedMid = { x: mid.x + n.x * off, y: mid.y + n.y * off };
+      traceMidsImage.push(applyH(Hinv, curvedMid));
+    }
+    return { outerPath, idealPath, innerPath, outerEdgePath, traceMidsImage };
+  }
+
+  // Inverse of the above: given a user pointer in IMAGE coords, compute the
+  // canonical-mm trace offset for side `s`. This is the projection of the
+  // canonical pointer onto the inward normal at that side. Used during drag.
+  function v2ImagePointToTraceOffsetMm(bands, s, imgPt) {
+    if (!bands) return 0;
+    const { H, sX, sY, canonicalOuterEdge } = bands;
+    const canon = applyH(H, imgPt);
+    const { mid } = _v2SideEndpoints(canonicalOuterEdge, s);
+    const n = _v2SideNormalCanonical(s);
+    const dot = (canon.x - mid.x) * n.x + (canon.y - mid.y) * n.y;
+    const sFactor = (s === 0 || s === 2) ? sY : sX;
+    return dot / sFactor;
   }
 
   function fillQuad(pts, color, evenOdd) {
@@ -2702,40 +3150,159 @@
     octx.fill(evenOdd ? 'evenodd' : 'nonzero');
   }
 
-  function drawV2Bands(outer, idealMm) {
-    const bands = computeV2Bands(outer, idealMm);
+  function drawV2Bands(outer, idealMmLR, idealMmTB) {
+    const bands = computeV2Bands(outer, idealMmLR, idealMmTB);
+    // Quick Band aside summary — show both axes side by side.
     const detEl = $('v2-current-ideal');
     const tolEl = $('v2-tolerance-range');
-    if (detEl) detEl.textContent = idealMm.toFixed(2);
+    if (detEl) {
+      detEl.textContent = (idealMmLR === idealMmTB)
+        ? idealMmLR.toFixed(2)
+        : `${idealMmLR.toFixed(2)} / ${idealMmTB.toFixed(2)}`;
+    }
     if (tolEl) {
-      const lo = (idealMm * (1 - V2_TOLERANCE_PCT)).toFixed(2);
-      const hi = (idealMm * (1 + V2_TOLERANCE_PCT)).toFixed(2);
-      tolEl.textContent = `${lo}–${hi}`;
+      const loLR = (idealMmLR * (1 - V2_TOLERANCE_PCT)).toFixed(2);
+      const hiLR = (idealMmLR * (1 + V2_TOLERANCE_PCT)).toFixed(2);
+      const loTB = (idealMmTB * (1 - V2_TOLERANCE_PCT)).toFixed(2);
+      const hiTB = (idealMmTB * (1 + V2_TOLERANCE_PCT)).toFixed(2);
+      tolEl.textContent = (idealMmLR === idealMmTB)
+        ? `${loLR}–${hiLR}`
+        : `L/R ${loLR}–${hiLR} · T/B ${loTB}–${hiTB}`;
     }
     if (!bands) return;
-    // 1. Fill the band zone (between outer and inner) as a translucent
-    //    annulus — even-odd rule + outer minus inner = annular fill.
-    octx.beginPath();
-    bands.outerBand.forEach((p, i) => {
-      const cp = imageToCanvas(p);
-      if (i === 0) octx.moveTo(cp.x, cp.y);
-      else octx.lineTo(cp.x, cp.y);
-    });
-    octx.closePath();
-    bands.innerBand.forEach((p, i) => {
-      const cp = imageToCanvas(p);
-      if (i === 0) octx.moveTo(cp.x, cp.y);
-      else octx.lineTo(cp.x, cp.y);
-    });
-    octx.closePath();
+    const trustworthy = state.outerAutoDetected || state.outerUserEdited;
+    const alpha = trustworthy ? '' : '66';
+    const lwBand  = V2_BAND_WIDTH;
+    const lwIdeal = V2_BAND_WIDTH;
+
+    // Codex r-trace: when Trace edge mode is ON, switch from straight quads
+    // to canonical-space curved Bezier overlays. The straight quads still
+    // render underneath as a faint "ghost" reference so the user can see how
+    // far they've bowed each side.
+    const traceOn = state.v2TraceMode && state.v2TraceOffsetsMm.some(o => Math.abs(o) > 0.001);
+
+    if (!traceOn) {
+      // ── Default v21 straight path (backward compat exact) ──────────────
+      octx.beginPath();
+      bands.outerBand.forEach((p, i) => {
+        const cp = imageToCanvas(p);
+        if (i === 0) octx.moveTo(cp.x, cp.y); else octx.lineTo(cp.x, cp.y);
+      });
+      octx.closePath();
+      bands.innerBand.forEach((p, i) => {
+        const cp = imageToCanvas(p);
+        if (i === 0) octx.moveTo(cp.x, cp.y); else octx.lineTo(cp.x, cp.y);
+      });
+      octx.closePath();
+      octx.fillStyle = V2_BAND_FILL;
+      octx.fill('evenodd');
+      drawQuad(bands.outerBand, V2_BAND_STROKE + alpha, { lineWidth: lwBand });
+      drawQuad(bands.idealLine, V2_IDEAL_STROKE,
+               { dashed: true, dash: V2_DASH_PATTERN, lineWidth: lwIdeal });
+      drawQuad(bands.innerBand, V2_BAND_STROKE + alpha, { lineWidth: lwBand });
+      // Mid handles still visible (at t=0.5 default position) so user can
+      // grab them and bow.
+      if (state.v2TraceMode) drawV2TraceMids(bands);
+      return;
+    }
+
+    // ── Trace edge path: ghost straight + curved trace + mids ──────────
+    const traced = buildV2TracedBands(bands, state.v2TraceOffsetsMm);
+    if (!traced) {
+      // Fallback: draw straight band so the screen isn't blank.
+      drawQuad(bands.outerBand, V2_BAND_STROKE + alpha, { lineWidth: lwBand });
+      drawQuad(bands.idealLine, V2_IDEAL_STROKE,
+               { dashed: true, dash: V2_DASH_PATTERN, lineWidth: lwIdeal });
+      drawQuad(bands.innerBand, V2_BAND_STROKE + alpha, { lineWidth: lwBand });
+      if (state.v2TraceMode) drawV2TraceMids(bands);
+      return;
+    }
+
+    // Codex r-trace-ghost-removal: ghost layer (straight references) was
+    // tested and found to compete visually with the curved active trace.
+    // User feedback "old + new = confusing" → only draw the curved layer.
+    // The 4 corner handles still expose the straight basis (they sit at the
+    // straight corners), the green mid handles + aside trace offset already
+    // give bow feedback.
+
+    // 1. Curved annular fill (outer curved path − inner curved path).
+    const strokePath = (path) => {
+      octx.beginPath();
+      path.forEach((p, i) => {
+        const cp = imageToCanvas(p);
+        if (i === 0) octx.moveTo(cp.x, cp.y); else octx.lineTo(cp.x, cp.y);
+      });
+      octx.closePath();
+    };
+    strokePath(traced.outerPath);
+    strokePath(traced.innerPath);
     octx.fillStyle = V2_BAND_FILL;
     octx.fill('evenodd');
-    // 2. Stroke the 3 lines (outer band, ideal mid, inner band)
-    const trustworthy = state.outerAutoDetected || state.outerUserEdited;
-    const alpha = trustworthy ? '' : '55'; // greyed if outer not trusted
-    drawQuad(bands.outerBand, V2_BAND_STROKE + alpha);
-    drawQuad(bands.idealLine, V2_IDEAL_STROKE,  { dashed: true });
-    drawQuad(bands.innerBand, V2_BAND_STROKE + alpha);
+
+    // 2. Stroke curved orange band boundaries + curved ideal mid line.
+    const strokeCurvedPath = (path, color, opts) => {
+      octx.beginPath();
+      path.forEach((p, i) => {
+        const cp = imageToCanvas(p);
+        if (i === 0) octx.moveTo(cp.x, cp.y); else octx.lineTo(cp.x, cp.y);
+      });
+      octx.closePath();
+      octx.strokeStyle = color;
+      octx.lineWidth = (opts && opts.lineWidth) || lwBand;
+      if (opts && opts.dashed) octx.setLineDash(opts.dash || [4, 4]);
+      else octx.setLineDash([]);
+      octx.stroke();
+      octx.setLineDash([]);
+    };
+    strokeCurvedPath(traced.outerPath, V2_BAND_STROKE + alpha,
+                     { lineWidth: lwBand });
+    strokeCurvedPath(traced.idealPath, V2_IDEAL_STROKE,
+                     { lineWidth: lwIdeal, dashed: true, dash: V2_DASH_PATTERN });
+    strokeCurvedPath(traced.innerPath, V2_BAND_STROKE + alpha,
+                     { lineWidth: lwBand });
+
+    // 3. Curved CYAN OUTER edge — primary visual reference, slightly thicker
+    //    so it reads as "the active card edge after trace". The 4 corner
+    //    handles still sit at the straight base positions; the green mid
+    //    handles + aside trace-offset readout cover the bow feedback.
+    const sch2 = HANDLE_SCHEMES[state.schemeIdx];
+    strokeCurvedPath(traced.outerEdgePath, sch2.outer,
+                     { lineWidth: lwBand * 1.8 });
+
+    drawV2TraceMids(bands, traced);
+  }
+
+  function drawV2TraceMids(bands, traced) {
+    // Show 4 small green mid handles on the OUTER (user-controlled) edge.
+    // If `traced` provided, mids are at the bowed positions; otherwise at
+    // the straight midpoints (matches t=0.5 of corner-to-corner image line).
+    if (!bands) return;
+    let mids;
+    if (traced && traced.traceMidsImage) {
+      mids = traced.traceMidsImage;
+    } else {
+      // Straight midpoint = warp(canonical straight mid) — i.e. same as
+      // (corner_a + corner_b) / 2 in IMAGE space (linear).
+      const o = bands.canonicalOuterEdge;
+      mids = [];
+      for (let s = 0; s < 4; s++) {
+        const a = o[s], b = o[(s + 1) % 4];
+        const cmid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        mids.push(applyH(bands.Hinv, cmid));
+      }
+    }
+    for (let i = 0; i < mids.length; i++) {
+      const cp = imageToCanvas(mids[i]);
+      octx.beginPath();
+      octx.arc(cp.x, cp.y, 6, 0, Math.PI * 2);
+      octx.fillStyle = V2_MID_STROKE + 'CC';
+      octx.fill();
+      octx.lineWidth = 1.2;
+      octx.strokeStyle = '#000';
+      octx.stroke();
+    }
+    // Cache mid image-positions for hit-testing.
+    state._v2TraceMidsCache = mids;
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -2755,9 +3322,15 @@
     $('mode-precise').setAttribute('aria-selected', String(state.mode === 'precise'));
     $('mode-quick'  ).setAttribute('aria-selected', String(state.mode === 'quick'));
     $('ideal-widget').hidden = state.mode !== 'quick';
+    // Trace toggle / reset only visible in Quick Band.
+    const traceBtn = $('trace-toggle');
+    const traceReset = $('trace-reset');
+    if (traceBtn) traceBtn.hidden = state.mode !== 'quick';
+    if (traceReset) traceReset.hidden = state.mode !== 'quick';
     const refineBtn = $('refine-toggle');
     if (refineBtn) refineBtn.hidden = state.mode === 'quick';
     setV2StatsVisible(state.mode === 'quick');
+    refreshV2TraceUI();
     // When entering Precise from Quick: if user has not edited inner handles,
     // auto-place them at the current ideal-mm inset so the precise inner
     // starting point matches what Quick Band showed.
@@ -2770,12 +3343,11 @@
   }
 
   function placeInnerAtIdeal() {
-    // Auto-seed inner = outer inset by idealMm in CANONICAL space, then
-    // warped back to image space. This matches the Quick Band's "ideal"
-    // dashed line, giving the user a non-arbitrary starting inner quad
-    // when they switch from Quick → Precise without editing inner first.
+    // Auto-seed inner = outer inset by the per-axis ideals in CANONICAL space,
+    // then warped back to image space. Matches the Quick Band's "ideal" dashed
+    // line so the precise inner starting quad is non-arbitrary on mode switch.
     if (!state.outer) return;
-    const bands = computeV2Bands(state.outer, state.idealMm);
+    const bands = computeV2Bands(state.outer, state.idealMmLR, state.idealMmTB);
     if (!bands) return;
     state.inner = bands.idealLine.map(p => ({ x: p.x, y: p.y }));
     if (typeof seedMidPoints === 'function') {
@@ -2783,18 +3355,23 @@
     }
   }
 
-  function adjustIdealMm(delta) {
-    const next = Math.round((state.idealMm + delta) / V2_IDEAL_STEP) * V2_IDEAL_STEP;
-    state.idealMm = Math.max(V2_IDEAL_MIN, Math.min(V2_IDEAL_MAX, +next.toFixed(2)));
-    $('ideal-display').textContent = state.idealMm.toFixed(2) + ' mm';
-    try { localStorage.setItem(V2_IDEAL_KEY, String(state.idealMm)); } catch (_) {}
+  // Generic per-axis adjuster. axis ∈ {'lr', 'tb'}.
+  function adjustIdealMmAxis(axis, delta) {
+    const key = axis === 'tb' ? 'idealMmTB' : 'idealMmLR';
+    const storeKey = axis === 'tb' ? V2_IDEAL_TB_KEY : V2_IDEAL_LR_KEY;
+    const displayId = axis === 'tb' ? 'ideal-tb-display' : 'ideal-lr-display';
+    const next = Math.round((state[key] + delta) / V2_IDEAL_STEP) * V2_IDEAL_STEP;
+    state[key] = Math.max(V2_IDEAL_MIN, Math.min(V2_IDEAL_MAX, +next.toFixed(2)));
+    const el = $(displayId);
+    if (el) el.textContent = state[key].toFixed(2) + ' mm';
+    try { localStorage.setItem(storeKey, String(state[key])); } catch (_) {}
     scheduleDraw();
   }
 
-  function wireIdealBtn(el, delta) {
+  function wireIdealBtn(el, axis, delta) {
     if (!el) return;
     let holdTimer = null, repeatTimer = null;
-    const fire = () => adjustIdealMm(delta);
+    const fire = () => adjustIdealMmAxis(axis, delta);
     const stop = e => {
       if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
       if (repeatTimer) { clearInterval(repeatTimer); repeatTimer = null; }
@@ -2818,22 +3395,82 @@
     el.addEventListener('pointercancel', stop);
     el.addEventListener('pointerleave',  stop);
   }
-  wireIdealBtn($('ideal-dec'), -V2_IDEAL_STEP);
-  wireIdealBtn($('ideal-inc'), +V2_IDEAL_STEP);
+  wireIdealBtn($('ideal-lr-dec'), 'lr', -V2_IDEAL_STEP);
+  wireIdealBtn($('ideal-lr-inc'), 'lr', +V2_IDEAL_STEP);
+  wireIdealBtn($('ideal-tb-dec'), 'tb', -V2_IDEAL_STEP);
+  wireIdealBtn($('ideal-tb-inc'), 'tb', +V2_IDEAL_STEP);
 
   $('mode-precise').addEventListener('click', () => applyMode('precise'));
   $('mode-quick').addEventListener('click', () => applyMode('quick'));
 
-  // Restore persisted mode + ideal-mm
+  // ── V2 Trace edge mode wiring ──────────────────────────────────────
+  function refreshV2TraceUI() {
+    const lbl = $('trace-label');
+    if (lbl) lbl.textContent = state.v2TraceMode ? 'ON' : 'OFF';
+    const traceBtn = $('trace-toggle');
+    if (traceBtn) traceBtn.classList.toggle('btn-primary', state.v2TraceMode);
+    // Aside indicator
+    const info = $('v2-trace-info');
+    const offs = $('v2-trace-offsets');
+    const warn = $('v2-trace-warn');
+    const visible = state.mode === 'quick' && state.v2TraceMode;
+    if (info) info.style.display = visible ? '' : 'none';
+    if (offs && visible) {
+      const o = state.v2TraceOffsetsMm;
+      offs.textContent = `${o[0].toFixed(2)} · ${o[1].toFixed(2)} · ${o[2].toFixed(2)} · ${o[3].toFixed(2)}`;
+    }
+    if (warn) {
+      const peak = Math.max(...state.v2TraceOffsetsMm.map(Math.abs));
+      if (peak > V2_TRACE_HIGH_MM) {
+        warn.style.display = '';
+        warn.className = 'text-[10px] mt-1 text-red-400';
+        warn.textContent = `⚠ Large trace offset (${peak.toFixed(2)} mm > ${V2_TRACE_HIGH_MM} mm). Retake the photo or verify outer corners.`;
+      } else if (peak > V2_TRACE_WARN_MM) {
+        warn.style.display = '';
+        warn.className = 'text-[10px] mt-1 text-amber-400';
+        warn.textContent = `Trace offset ${peak.toFixed(2)} mm exceeds typical lens bow. Consider retake or verify.`;
+      } else {
+        warn.style.display = 'none';
+      }
+    }
+  }
+
+  function toggleV2Trace() {
+    state.v2TraceMode = !state.v2TraceMode;
+    try { localStorage.setItem(V2_TRACE_KEY, state.v2TraceMode ? 'on' : 'off'); }
+    catch (_) {}
+    refreshV2TraceUI();
+    scheduleDraw();
+  }
+
+  function resetV2Trace() {
+    state.v2TraceOffsetsMm = [0, 0, 0, 0];
+    state.v2TraceEdited    = [false, false, false, false];
+    refreshV2TraceUI();
+    scheduleDraw();
+  }
+
+  $('trace-toggle').addEventListener('click', toggleV2Trace);
+  $('trace-reset').addEventListener('click', resetV2Trace);
+
+  // Restore persisted mode + per-axis ideal-mm with v19 single-value migration.
   try {
     const savedMode = localStorage.getItem(V2_MODE_KEY);
-    const savedIdeal = parseFloat(localStorage.getItem(V2_IDEAL_KEY));
-    if (isFinite(savedIdeal) && savedIdeal >= V2_IDEAL_MIN && savedIdeal <= V2_IDEAL_MAX) {
-      state.idealMm = +savedIdeal.toFixed(2);
-    }
-    $('ideal-display').textContent = state.idealMm.toFixed(2) + ' mm';
+    const clamp = v => Math.max(V2_IDEAL_MIN, Math.min(V2_IDEAL_MAX, +v.toFixed(2)));
+    const newLR = parseFloat(localStorage.getItem(V2_IDEAL_LR_KEY));
+    const newTB = parseFloat(localStorage.getItem(V2_IDEAL_TB_KEY));
+    const legacy = parseFloat(localStorage.getItem(V2_IDEAL_KEY));
+    if (isFinite(newLR)) state.idealMmLR = clamp(newLR);
+    else if (isFinite(legacy)) state.idealMmLR = clamp(legacy);
+    if (isFinite(newTB)) state.idealMmTB = clamp(newTB);
+    else if (isFinite(legacy)) state.idealMmTB = clamp(legacy);
+    $('ideal-lr-display').textContent = state.idealMmLR.toFixed(2) + ' mm';
+    $('ideal-tb-display').textContent = state.idealMmTB.toFixed(2) + ' mm';
+    const savedTrace = localStorage.getItem(V2_TRACE_KEY);
+    if (savedTrace === 'on') state.v2TraceMode = true;
     if (savedMode === 'quick') applyMode('quick');
-  } catch (_) { /* localStorage blocked — keep defaults */ }
+    else refreshV2TraceUI();
+  } catch (_) { refreshV2TraceUI(); }
 })();
 </script>
 

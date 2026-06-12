@@ -1,9 +1,39 @@
+# macOS
 .DS_Store
+**/.DS_Store
+**/__MACOSX/
+
+# Internal docs
 HANDOFF.md
+
+# Env / secrets
 .env
 .env.*
+**/.token
+**/.tunnel-url
+
+# Node
 node_modules/
+package-lock.json
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+
+# Generated / cached data (built by scripts)
 aliases.json
 pokemon_names.json
 jp_set_info.json
 tc_set_info.json
+
+# Local backend experiments (Python AI, not for static deploy)
+backend/
+**/.venv/
+**/__pycache__/
+
+# Upscale test / dev pages (not for production)
+upscale-test*.html
+
+# Local upscale tools (kept under ~/cardjeng-tools anyway, this is a safety net)
+cardjeng-tools/
