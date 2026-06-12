@@ -236,10 +236,6 @@
               title="AI Upscale current photo 4× via self-hosted Real-ESRGAN. Useful for low-res Xianyu seller photos.">
         ✨ AI Upscale
       </button>
-      <button id="ai-config" class="btn btn-secondary" type="button"
-              title="Configure AI Upscale tunnel URL + auth token. Stored in localStorage.">
-        ⚙
-      </button>
       <div class="mode-seg" role="tablist" aria-label="Measurement mode"
            title="Precise = manual 4 outer + 4 inner handles, full ratio.  Quick Band = 4 outer + PSA10 visual band overlay.">
         <button id="mode-precise" class="mode-btn active" role="tab" aria-selected="true" type="button">Precise</button>
@@ -1636,39 +1632,29 @@
   // ─────────────────────────────────────────────────────────────
   // AI Upscale (self-hosted Real-ESRGAN via Cloudflare Tunnel)
   // ─────────────────────────────────────────────────────────────
-  const UPSCALE_LS_URL = 'cardjeng.upscaleUrl';
-  const UPSCALE_LS_TOKEN = 'cardjeng.upscaleToken';
+  // Hardcoded tunnel URL — zero-config UX. Update this constant if the
+  // Quick Tunnel restarts (cloudflared rotates the random subdomain).
+  // Token left blank: server runs in anonymous mode with rate limit.
+  const UPSCALE_URL_DEFAULT = 'https://membrane-seats-opponent-smoking.trycloudflare.com';
+  const UPSCALE_LS_URL   = 'cardjeng.upscaleUrl';      // optional override
+  const UPSCALE_LS_TOKEN = 'cardjeng.upscaleToken';    // optional override
 
   function getUpscaleConfig() {
-    return {
-      url: localStorage.getItem(UPSCALE_LS_URL) || '',
-      token: localStorage.getItem(UPSCALE_LS_TOKEN) || '',
-    };
-  }
-
-  function configureUpscale() {
-    const cur = getUpscaleConfig();
-    const url = prompt(
-      'Upscale server URL (e.g. https://xxxx.trycloudflare.com):',
-      cur.url
-    );
-    if (url === null) return;          // cancel
-    // Token optional now — empty = anonymous (server allows it)
-    const token = prompt('Bearer token (leave blank if server has no auth):',
-                         cur.token);
-    if (token === null) return;
-    localStorage.setItem(UPSCALE_LS_URL, url.replace(/\/$/, ''));
-    localStorage.setItem(UPSCALE_LS_TOKEN, token || '');
-    setStatus('AI Upscale: config saved.');
-    refreshUpscaleButton();
+    let url = '';
+    let token = '';
+    try {
+      url = localStorage.getItem(UPSCALE_LS_URL) || '';
+      token = localStorage.getItem(UPSCALE_LS_TOKEN) || '';
+    } catch (_) {}
+    if (!url) url = UPSCALE_URL_DEFAULT;
+    return { url: url.replace(/\/$/, ''), token };
   }
 
   function refreshUpscaleButton() {
-    const { url } = getUpscaleConfig();
     const btn = $('ai-upscale');
     if (!btn) return;
-    // Public default: ✨ shows when image + URL configured. ⚙ always visible.
-    btn.hidden = !state.img || !url;
+    // ✨ shows when an image is loaded; URL is always present (hardcoded).
+    btn.hidden = !state.img;
   }
 
   async function aiUpscaleCurrent() {
@@ -1786,9 +1772,11 @@
   }
 
   $('ai-upscale').addEventListener('click', aiUpscaleCurrent);
-  $('ai-config').addEventListener('click', configureUpscale);
   // Re-evaluate button visibility whenever the image changes (cheap polling).
   setInterval(refreshUpscaleButton, 500);
+  // Power-user URL override (no UI):
+  //   localStorage.setItem('cardjeng.upscaleUrl', 'https://NEW.trycloudflare.com')
+  // Clear: localStorage.removeItem('cardjeng.upscaleUrl')
 
   function resetHandles() {
     const w = state.imgW, h = state.imgH;
