@@ -1,0 +1,7 @@
+# Cloudflare Pages redirects — preserve old centering URLs after the rename.
+# Format: source destination status
+# Reference: https://developers.cloudflare.com/pages/configuration/redirects/
+
+/centering         /           301
+/centering.html    /           301
+/centering/        /           301
