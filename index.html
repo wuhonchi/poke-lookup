@@ -236,7 +236,7 @@
               title="AI Upscale current photo 4× via self-hosted Real-ESRGAN. Useful for low-res Xianyu seller photos.">
         ✨ AI Upscale
       </button>
-      <button id="ai-config" class="btn btn-secondary" type="button" hidden
+      <button id="ai-config" class="btn btn-secondary" type="button"
               title="Configure AI Upscale tunnel URL + auth token. Stored in localStorage.">
         ⚙
       </button>
@@ -1667,10 +1667,8 @@
     const { url } = getUpscaleConfig();
     const btn = $('ai-upscale');
     if (!btn) return;
-    // Hidden unless: dev mode + image loaded + URL configured
-    let isDev = false;
-    try { isDev = localStorage.getItem('cardjeng.devMode') === '1'; } catch (_) {}
-    btn.hidden = !isDev || !state.img || !url;
+    // Public default: ✨ shows when image + URL configured. ⚙ always visible.
+    btn.hidden = !state.img || !url;
   }
 
   async function aiUpscaleCurrent() {
@@ -1791,31 +1789,6 @@
   $('ai-config').addEventListener('click', configureUpscale);
   // Re-evaluate button visibility whenever the image changes (cheap polling).
   setInterval(refreshUpscaleButton, 500);
-
-  // ── Dev gate ────────────────────────────────────────────────
-  // AI Upscale + ⚙ buttons only appear when:
-  //   ?dev=1 in URL (browser-side test), OR
-  //   localStorage.cardjeng.devMode === '1' (sticky for this device)
-  // This keeps public cardjeng.pages.dev visitors from seeing/abusing
-  // a personal Real-ESRGAN tunnel URL once it's been configured.
-  (function devGate() {
-    const params = new URLSearchParams(location.search);
-    if (params.get('dev') === '1') {
-      try { localStorage.setItem('cardjeng.devMode', '1'); } catch (_) {}
-    }
-    if (params.get('dev') === '0') {
-      try { localStorage.removeItem('cardjeng.devMode'); } catch (_) {}
-    }
-    const isDev = (() => {
-      try { return localStorage.getItem('cardjeng.devMode') === '1'; }
-      catch (_) { return false; }
-    })();
-    if (isDev) {
-      $('ai-config').hidden = false;
-      // ai-upscale still depends on having a configured URL + loaded image;
-      // refreshUpscaleButton handles that.
-    }
-  })();
 
   function resetHandles() {
     const w = state.imgW, h = state.imgH;
