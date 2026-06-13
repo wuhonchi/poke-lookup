@@ -1,0 +1,10 @@
+weights/
+logs/
+jobs/
+venv/
+__pycache__/
+*.pyc
+.token
+.tunnel-url
+.server.pid
+.tunnel.pid
