@@ -43,6 +43,51 @@
     0%, 100% { transform: translateY(0); opacity: 0.85; }
     50%      { transform: translateY(3px); opacity: 1; }
   }
+  /* Full-screen AI Upscale overlay: backdrop + progress bar + status line.
+     Locks interaction until job finishes (or fails). */
+  .upscale-overlay {
+    position: fixed; inset: 0; z-index: 10000;
+    background: rgba(8, 10, 14, 0.78);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .upscale-card {
+    background: #111; border: 1px solid #1f1f1f; border-radius: 12px;
+    padding: 22px 24px; max-width: 380px; width: 100%;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.55);
+  }
+  .upscale-title {
+    font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: #e2e8f0; margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+  }
+  .upscale-spin {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid #facc15; border-top-color: transparent;
+    animation: upspin 0.8s linear infinite;
+  }
+  @keyframes upspin { to { transform: rotate(360deg); } }
+  .upscale-stage {
+    font-size: 12px; color: #94a3b8; margin-bottom: 10px;
+    font-family: ui-monospace, monospace;
+  }
+  .upscale-bar {
+    height: 10px; background: #1e293b; border-radius: 999px; overflow: hidden;
+    margin-bottom: 8px;
+  }
+  .upscale-bar > div {
+    height: 100%;
+    background: linear-gradient(90deg, #facc15, #f97316);
+    width: 0%; transition: width 0.2s ease;
+  }
+  .upscale-meta {
+    font-size: 11px; color: #64748b; font-family: ui-monospace, monospace;
+    display: flex; justify-content: space-between;
+  }
+  .upscale-err {
+    color: #ef4444; font-size: 12px; margin-top: 10px;
+    font-family: ui-monospace, monospace;
+  }
   canvas.image-canvas { display: block; max-width: 100%; }
   canvas.overlay-canvas { position: absolute; top: 0; left: 0; touch-action: none; cursor: crosshair; }
   .minimap-wrap-inline { background: #111; border: 1px solid #222; border-radius: 8px; padding: 8px; display: inline-block; }
@@ -209,12 +254,22 @@
       <p class="mono text-[10px] lg:text-xs text-gray-500 uppercase tracking-[0.2em]">centering analyzer</p>
       <a href="/search" class="mono text-[10px] uppercase tracking-wider px-2 py-1 rounded border border-gray-700 text-gray-400 hover:border-yellow-500 hover:text-yellow-500 transition ml-auto">/ Search</a>
     </div>
-    <p class="text-xs lg:text-sm text-gray-400 mt-2 max-w-3xl">
+    <p id="intro-precise" class="text-xs lg:text-sm text-gray-400 mt-2 max-w-3xl" hidden>
       Upload a near-top-down photo of a trading card. Drag the
       <strong>outer</strong> handles to the
       <span class="font-semibold">physical card edge</span> and the
       <strong>inner</strong> handles to the
       <span class="font-semibold">artwork-start boundary</span> (where the colored border meets the central art — not the outer edge of the colored band). Use the <strong>Colors</strong> toggle if the handles blend with a filter.
+      <span class="hidden lg:inline">Pinch / wheel = zoom. Drag empty area = pan. Arrow keys nudge selected handle 1 px (Shift = 10 px).</span>
+      <span class="lg:hidden">Pinch to zoom. Drag empty area to pan.</span>
+    </p>
+    <p id="intro-quick" class="text-xs lg:text-sm text-gray-400 mt-2 max-w-3xl">
+      Upload a near-top-down photo of a trading card. Drag the four
+      <strong>outer</strong> handles to the
+      <span class="font-semibold">physical card edge</span>. CardJeng overlays a
+      PSA-10-style band — visually compare it against the printed border to
+      judge centering. Adjust the band width with the <strong>L/R</strong> and
+      <strong>T/B</strong> mm controls.
       <span class="hidden lg:inline">Pinch / wheel = zoom. Drag empty area = pan. Arrow keys nudge selected handle 1 px (Shift = 10 px).</span>
       <span class="lg:hidden">Pinch to zoom. Drag empty area to pan.</span>
     </p>
@@ -236,10 +291,13 @@
               title="AI Upscale current photo 4× via self-hosted Real-ESRGAN. Useful for low-res Xianyu seller photos.">
         ✨ AI Upscale
       </button>
-      <div class="mode-seg" role="tablist" aria-label="Measurement mode"
+      <!-- Mode selector currently hidden — Quick Band is the only public path.
+           Precise mode is still wired up for future use; restore visibility by
+           removing the `hidden` attribute. -->
+      <div class="mode-seg" role="tablist" aria-label="Measurement mode" hidden
            title="Precise = manual 4 outer + 4 inner handles, full ratio.  Quick Band = 4 outer + PSA10 visual band overlay.">
-        <button id="mode-precise" class="mode-btn active" role="tab" aria-selected="true" type="button">Precise</button>
-        <button id="mode-quick"   class="mode-btn"        role="tab" aria-selected="false" type="button">Quick Band</button>
+        <button id="mode-precise" class="mode-btn" role="tab" aria-selected="false" type="button">Precise</button>
+        <button id="mode-quick"   class="mode-btn active" role="tab" aria-selected="true" type="button">Quick Band</button>
       </div>
       <div id="ideal-widget" class="ideal-widget" hidden
            title="Per-axis ideal border (mm). L/R and T/B can differ by card layout.">
@@ -257,7 +315,7 @@
         </div>
       </div>
       <button id="trace-toggle" class="btn btn-secondary" hidden type="button"
-              title="Trace edge: drag a small green mid-handle per side to gently bow the band along the photo's apparent curve. Visual only — verdict still computed from the 4 corners.">Trace: <span id="trace-label">OFF</span></button>
+              title="Trace edge: drag a small green mid-handle per side to gently bow the band along the photo's apparent curve. Visual overlay only — band position follows the 4 corners.">Trace: <span id="trace-label">OFF</span></button>
       <button id="trace-reset" class="btn btn-secondary" hidden type="button"
               title="Reset all 4 trace mid handles back to straight (offset = 0).">Reset trace</button>
       <button id="rotate" class="btn btn-secondary" title="Rotate front 90° clockwise">⟳ Rotate</button>
@@ -267,9 +325,14 @@
       <button id="reset-view" class="btn btn-secondary" title="Reset front zoom and pan">Fit</button>
       <button id="tips-open" class="btn btn-secondary" title="Show usage tips · 顯示使用守則" aria-label="Show tips">?</button>
       <span class="zoom-badge mono"><span id="zoom-display">100%</span></span>
-      <span class="text-[11px] text-gray-500 hidden md:inline">
+      <span id="legend-precise" class="text-[11px] text-gray-500 hidden md:inline" hidden>
         <span class="legend-dot" id="legend-outer" style="background:#22d3ee"></span>outer
         <span class="legend-dot ml-2" id="legend-inner" style="background:#facc15"></span>inner
+      </span>
+      <span id="legend-quick" class="text-[11px] text-gray-500 hidden md:inline">
+        <span class="legend-dot" style="background:#22d3ee"></span>outer
+        <span class="legend-dot ml-2" style="background:#f97316"></span>PSA-10 band
+        <span class="legend-dot ml-2" style="background:#22c55e"></span>ideal centred
       </span>
       <span id="status" class="ml-auto text-[11px] text-gray-400 max-w-xs truncate"></span>
     </div>
@@ -356,7 +419,7 @@
         </div>
       </div>
 
-      <div class="text-[11px] text-gray-500 -mt-1 px-1">
+      <div id="ratio-note" class="text-[11px] text-gray-500 -mt-1 px-1">
         Ratios (L/R, T/B) are the primary measurement. mm values are
         estimates — biased by handle placement, lens distortion, and
         rounded card corners. <span id="frame-info" class="mono"></span>
@@ -386,13 +449,13 @@
         </div>
       </div>
 
-      <div class="stat">
+      <div class="stat" id="warp-card">
         <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Schematic preview</div>
         <canvas id="warp-canvas" class="w-full bg-black rounded" style="aspect-ratio: 63/88;"></canvas>
         <div class="text-[11px] text-gray-500 mt-2">Outer = card boundary after perspective correction. Inner = inner-frame markers warped into rectified space. Border strips are shaded by relative size — <span class="text-red-400">red</span> = shorter side, <span class="text-green-400">green</span> = longer, dim yellow = within ±5 % of 50/50.</div>
       </div>
 
-      <div class="stat">
+      <div class="stat" id="placement-guide">
         <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Handle placement guide</div>
         <svg viewBox="0 0 220 140" class="w-full" xmlns="http://www.w3.org/2000/svg">
           <!-- card body -->
@@ -426,7 +489,7 @@
         </div>
       </div>
 
-      <details class="text-xs text-gray-400 stat">
+      <details id="psa-thresholds" class="text-xs text-gray-400 stat">
         <summary class="text-gray-300 font-semibold">PSA centering thresholds</summary>
         <ul class="list-disc pl-4 mt-2 space-y-1">
           <li><span class="text-green-400 font-semibold">Gem Mint 10</span>: ≤ 55/45 front, ≤ 75/25 back</li>
@@ -436,7 +499,7 @@
         </ul>
       </details>
 
-      <details class="text-xs text-gray-400 stat">
+      <details id="precise-tips" class="text-xs text-gray-400 stat">
         <summary class="text-gray-300 font-semibold">Tips & caveats</summary>
         <ul class="list-disc pl-4 mt-2 space-y-1">
           <li><strong>Outer</strong> handles = physical card edge. <strong>Inner</strong> handles = where the central artwork begins (inner edge of the colored band).</li>
@@ -446,6 +509,19 @@
           <li>Card dimensions assumed 63 × 88 mm.</li>
           <li>Best capture: dark matte background, no flash, even diffused light, phone parallel to card, full card with margin, sleeves removed. <strong>Lens choice matters</strong>: prefer 2× / telephoto if your phone has one. Ultra-wide adds barrel distortion that bends straight card edges and biases L/R borders ~0.1-0.2 mm.</li>
           <li>Handles auto-<strong>lock after 1.5 s</strong> of no movement to prevent the tiny release-nudge. A countdown ring in the center of the canvas shows remaining hold time. Lift and tap again to resume; green ring = locked.</li>
+        </ul>
+      </details>
+
+      <details id="quick-tips" class="text-xs text-gray-400 stat" hidden>
+        <summary class="text-gray-300 font-semibold">Tips & caveats</summary>
+        <ul class="list-disc pl-4 mt-2 space-y-1">
+          <li>Quick Band is a <strong>visual overlay</strong> only — no numeric centering score.</li>
+          <li>Drag the four <strong>outer</strong> handles right to the printed card edge. The orange-red and green lines move with them.</li>
+          <li><strong>Inner border on green line</strong> = ideal centred. Inside green ↔ orange = PSA-10 candidate. Outside orange = likely below PSA-10.</li>
+          <li>Adjust <strong>L/R</strong> and <strong>T/B</strong> mm controls if your card's nominal border differs from the default 2.50 mm.</li>
+          <li><strong>Trace edge</strong> lets you bow the band along a curved photo edge (lens distortion / card warp). Visual only.</li>
+          <li>Best capture: dark matte background, no flash, phone parallel to card, prefer 2× / telephoto. Ultra-wide bends edges.</li>
+          <li>Handles auto-<strong>lock after 1.5 s</strong> to prevent release-nudge. Lift and tap again to move.</li>
         </ul>
       </details>
     </aside>
@@ -1021,7 +1097,8 @@
     };
     const sch = HANDLE_SCHEMES[state.schemeIdx];
     drawQ(state.outer, sch.outer);
-    drawQ(state.inner, sch.inner);
+    // Inner quad is Precise-mode only — Quick Band has no inner handles.
+    if (state.mode !== 'quick') drawQ(state.inner, sch.inner);
 
     const vpX = ox + v.offsetX * scale;
     const vpY = oy + v.offsetY * scale;
@@ -1657,10 +1734,44 @@
     btn.hidden = !state.img;
   }
 
+  // Overlay helpers — full-screen UI during AI Upscale jobs.
+  function showUpscaleOverlay() {
+    const ov = $('upscale-overlay');
+    if (!ov) return;
+    $('upscale-stage').textContent = 'Preparing…';
+    $('upscale-pct').textContent   = '0%';
+    $('upscale-elapsed').textContent = '0s';
+    $('upscale-bar-fill').style.width = '0%';
+    $('upscale-err').hidden = true;
+    $('upscale-err').textContent = '';
+    $('upscale-spin').style.display = '';
+    ov.hidden = false;
+  }
+  function updateUpscaleOverlay({ stage, pct, elapsed }) {
+    if (stage   !== undefined) $('upscale-stage').textContent  = stage;
+    if (pct     !== undefined) {
+      const p = Math.max(0, Math.min(100, Math.round(pct)));
+      $('upscale-pct').textContent = p + '%';
+      $('upscale-bar-fill').style.width = p + '%';
+    }
+    if (elapsed !== undefined) $('upscale-elapsed').textContent = elapsed.toFixed(0) + 's';
+  }
+  function hideUpscaleOverlay() {
+    const ov = $('upscale-overlay');
+    if (ov) ov.hidden = true;
+  }
+  function failUpscaleOverlay(msg) {
+    $('upscale-err').textContent = '⚠ ' + msg;
+    $('upscale-err').hidden = false;
+    $('upscale-spin').style.display = 'none';
+    // Auto-dismiss after 3 s so the user gets back to the page.
+    setTimeout(hideUpscaleOverlay, 3000);
+  }
+
   async function aiUpscaleCurrent() {
     const { url, token } = getUpscaleConfig();
     if (!url) {
-      setStatus('AI Upscale: not configured. Click ⚙ to set URL.');
+      setStatus('AI Upscale: not configured.');
       return;
     }
     if (!state.img) {
@@ -1669,10 +1780,14 @@
     }
     const btn = $('ai-upscale');
     btn.disabled = true;
-    const origLabel = btn.textContent;
+    showUpscaleOverlay();
+    const t0 = performance.now();
+    const tick = () => updateUpscaleOverlay({ elapsed: (performance.now() - t0) / 1000 });
+
     try {
       // 1) Encode current image to JPEG blob
-      setStatus('AI Upscale: encoding…');
+      updateUpscaleOverlay({ stage: 'Encoding photo…', pct: 2 });
+      tick();
       const w = state.imgW, h = state.imgH;
       const enc = document.createElement('canvas');
       enc.width = w; enc.height = h;
@@ -1681,9 +1796,13 @@
       const blob = await new Promise((resolve, reject) =>
         enc.toBlob(b => b ? resolve(b) : reject(new Error('toBlob null')),
                    'image/jpeg', 0.92));
-      btn.textContent = `✨ Uploading ${(blob.size/1024).toFixed(0)} KB…`;
 
-      // 2) POST /jobs
+      // 2) Upload
+      updateUpscaleOverlay({
+        stage: `Uploading ${(blob.size/1024).toFixed(0)} KB…`,
+        pct: 6,
+      });
+      tick();
       const form = new FormData();
       form.append('file', blob, 'card.jpg');
       const submitResp = await fetch(`${url}/jobs`, {
@@ -1696,41 +1815,49 @@
         throw new Error(`POST /jobs HTTP ${submitResp.status} ${t.slice(0, 120)}`);
       }
       const { job_id } = await submitResp.json();
-      setStatus(`AI Upscale: job ${job_id.slice(0, 8)}… queued`);
+      updateUpscaleOverlay({
+        stage: `Queued (job ${job_id.slice(0, 8)}…)`, pct: 10,
+      });
+      tick();
 
-      // 3) Poll
-      let lastProg = -1;
+      // 3) Poll — map server's tile progress (0..1) to 10..85 %
       while (true) {
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 1000));
+        tick();
         const sResp = await fetch(`${url}/jobs/${job_id}`, {
           headers: token ? { 'Authorization': `Bearer ${token}` } : {},
         });
         if (!sResp.ok) throw new Error(`Poll HTTP ${sResp.status}`);
         const s = await sResp.json();
         if (s.status === 'done') break;
-        if (s.status === 'failed') throw new Error('Server failed: ' + (s.error || 'unknown'));
+        if (s.status === 'failed')    throw new Error('Server failed: ' + (s.error || 'unknown'));
         if (s.status === 'cancelled') throw new Error('Job cancelled');
-        if (s.progress !== undefined && s.progress !== lastProg) {
-          lastProg = s.progress;
-          const pct = Math.round(s.progress * 100);
-          btn.textContent = `✨ ${pct}% (${s.elapsed?.toFixed(0) || '?'}s)`;
+        if (s.status === 'running' || s.status === 'queued') {
+          const sp = (s.progress || 0);
+          updateUpscaleOverlay({
+            stage: s.status === 'queued' ? 'Waiting in queue…' : `Upscaling tile…`,
+            pct: 10 + sp * 75,
+          });
         }
       }
 
-      // 4) Fetch result
-      btn.textContent = '✨ Downloading result…';
+      // 4) Download result
+      updateUpscaleOverlay({ stage: 'Downloading result…', pct: 88 });
+      tick();
       const rResp = await fetch(`${url}/jobs/${job_id}/result`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {},
       });
       if (!rResp.ok) throw new Error(`GET result HTTP ${rResp.status}`);
       const resultBlob = await rResp.blob();
-      btn.textContent = `✨ Decoding ${(resultBlob.size/1e6).toFixed(1)} MB…`;
+      updateUpscaleOverlay({
+        stage: `Decoding ${(resultBlob.size/1e6).toFixed(1)} MB…`,
+        pct: 94,
+      });
+      tick();
 
-      // 5) Decode and replace state.img
+      // 5) Decode + replace state.img
       const newBmp = await createImageBitmap(resultBlob, { imageOrientation: 'from-image' });
       const ow = newBmp.width, oh = newBmp.height;
-
-      // If larger than DISPLAY_MAX, downscale to a canvas (same logic as handleImageFile)
       if (Math.max(ow, oh) <= DISPLAY_MAX) {
         state.img = newBmp;
         state.imgW = ow; state.imgH = oh;
@@ -1748,7 +1875,7 @@
         state.imgW = dw; state.imgH = dh;
       }
 
-      // 6) Re-run the post-load chain (same as handleImageFile)
+      // 6) Re-run the post-load chain
       state.lockedHandle = null;
       clearLockTimer();
       state.view.rot = 0;
@@ -1761,12 +1888,16 @@
       recomputeScale();
       scheduleDraw();
 
+      updateUpscaleOverlay({ stage: 'Done', pct: 100 });
+      tick();
       setStatus(`AI Upscale: done. ${w}×${h} → ${ow}×${oh}, ${(resultBlob.size/1e6).toFixed(1)} MB`);
+      // Brief pause so user perceives completion, then dismiss.
+      setTimeout(hideUpscaleOverlay, 350);
     } catch (err) {
+      failUpscaleOverlay(err.message);
       setStatus('AI Upscale FAILED: ' + err.message);
     } finally {
       btn.disabled = false;
-      btn.textContent = origLabel;
       refreshUpscaleButton();
     }
   }
@@ -3333,10 +3464,25 @@
   // V2 mode UI wiring
   // ─────────────────────────────────────────────────────────────
   function setV2StatsVisible(visible) {
-    const els = ['v1-stats', 'grade-card'];
-    els.forEach(id => { const el = $(id); if (el) el.style.display = visible ? 'none' : ''; });
+    // Hidden in Quick Band (visible === true): all Precise-only readouts.
+    const preciseOnly = [
+      'v1-stats', 'grade-card', 'ratio-note', 'warp-card',
+      'placement-guide', 'psa-thresholds', 'precise-tips',
+    ];
+    preciseOnly.forEach(id => {
+      const el = $(id);
+      if (el) el.style.display = visible ? 'none' : '';
+    });
+    // Quick-Band-only stat + tips appear when visible === true.
     const v2 = $('v2-stats');
     if (v2) v2.style.display = visible ? '' : 'none';
+    const qTips = $('quick-tips');
+    if (qTips) qTips.hidden = !visible;
+    // Header intro text + toolbar legend swap per mode.
+    const introP = $('intro-precise');  if (introP) introP.hidden = visible;
+    const introQ = $('intro-quick');    if (introQ) introQ.hidden = !visible;
+    const legP   = $('legend-precise'); if (legP)   legP.hidden   = visible;
+    const legQ   = $('legend-quick');   if (legQ)   legQ.hidden   = !visible;
   }
 
   function applyMode(mode) {
@@ -3360,6 +3506,15 @@
     // starting point matches what Quick Band showed.
     if (state.mode === 'precise' && !state.innerUserEdited && state.outer) {
       placeInnerAtIdeal();
+    }
+    // When switching to Quick: drop any selection on inner handles + clear
+    // the lock timer so an invisible Precise handle isn't still "active".
+    if (state.mode === 'quick') {
+      if (state.selected && state.selected.set !== 'outer') {
+        state.selected = null;
+      }
+      state.lockedHandle = null;
+      if (typeof clearLockTimer === 'function') clearLockTimer();
     }
     try { localStorage.setItem(V2_MODE_KEY, state.mode); } catch (_) {}
     scheduleDraw();
@@ -3492,11 +3647,30 @@
     $('ideal-tb-display').textContent = state.idealMmTB.toFixed(2) + ' mm';
     const savedTrace = localStorage.getItem(V2_TRACE_KEY);
     if (savedTrace === 'on') state.v2TraceMode = true;
-    if (savedMode === 'quick') applyMode('quick');
-    else refreshV2TraceUI();
-  } catch (_) { refreshV2TraceUI(); }
+    // Precise mode is hidden in the UI for now — force Quick Band regardless of
+    // legacy localStorage value. To re-enable Precise, unhide the .mode-seg div
+    // and drop this override.
+    applyMode('quick');
+  } catch (_) { applyMode('quick'); }
 })();
 </script>
+
+<!-- ────────── AI Upscale full-screen overlay ────────── -->
+<div id="upscale-overlay" class="upscale-overlay" hidden aria-live="polite">
+  <div class="upscale-card">
+    <div class="upscale-title">
+      <span class="upscale-spin" id="upscale-spin"></span>
+      <span>AI Upscale</span>
+    </div>
+    <div class="upscale-stage" id="upscale-stage">Preparing…</div>
+    <div class="upscale-bar"><div id="upscale-bar-fill"></div></div>
+    <div class="upscale-meta">
+      <span id="upscale-pct">0%</span>
+      <span id="upscale-elapsed">0s</span>
+    </div>
+    <div class="upscale-err" id="upscale-err" hidden></div>
+  </div>
+</div>
 
 <!-- ────────── Footer ────────── -->
 <footer class="max-w-7xl mx-auto px-4 lg:px-6 py-8 mt-12 border-t border-zinc-900 text-xs text-gray-500 space-y-5">
