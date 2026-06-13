@@ -43,14 +43,54 @@ personal solo use this is the accepted trade-off.
 
 ## 1. Prerequisites on the M1 mini
 
+On a fresh macOS install neither `git` nor `brew` exists. Bootstrap both via
+Apple's Command Line Tools first, then Homebrew.
+
+### 1a. Install Xcode Command Line Tools (gives you `git`, `clang`, `make`)
+
 ```bash
-# macOS 13+ is fine; needs Homebrew + Python 3.10+.
-brew --version >/dev/null 2>&1 || /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-python3 --version    # expect 3.10 or newer
-xcode-select --install   # only if `clang` isn't present
+xcode-select --install
 ```
 
-Then make sure the repo is checked out:
+This pops a GUI dialog. Click **Install**, accept the licence, wait ~5–10 min.
+Verify:
+
+```bash
+git --version       # expect: git version 2.x.x
+clang --version
+```
+
+### 1b. Install Homebrew
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+Enter your sudo password when asked, wait ~3–5 min.
+
+### 1c. Add Homebrew to PATH (Apple Silicon: brew lives in `/opt/homebrew`)
+
+```bash
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv)"
+brew --version      # confirm
+```
+
+### 1d. Python 3.10+
+
+macOS 13+ usually ships Python 3 already. Confirm:
+
+```bash
+python3 --version   # expect 3.10 or newer
+```
+
+If older (<3.10) install via brew:
+
+```bash
+brew install python@3.12
+```
+
+### 1e. Clone this repo
 
 ```bash
 mkdir -p ~/Documents && cd ~/Documents
@@ -58,6 +98,16 @@ git clone https://github.com/wuhonchi/poke-lookup.git 2>/dev/null \
   || (cd poke-lookup && git pull)
 cd poke-lookup
 ```
+
+If `git clone` over HTTPS prompts for credentials, the simplest one-time
+setup is the GitHub CLI:
+
+```bash
+brew install gh
+gh auth login    # follow the prompts; pick GitHub.com → HTTPS → browser auth
+```
+
+After this, `git push` from inside this repo works without prompting.
 
 ---
 
