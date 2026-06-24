@@ -1433,6 +1433,9 @@
         state.v2InnerTraceOffsetsMm[s] = off;
         state.v2InnerTraceEdited[s] = true;
         state.innerUserEdited = true;  // ensures the live measurement strip stays on
+        // Live measurement update — the bowed midpoint just moved, so L/R/T/B
+        // mm and ratios shift even though no corner handle was touched.
+        if (typeof refreshInnerRefineUI === 'function') refreshInnerRefineUI();
         startLockTimer();
         scheduleDraw();
         return;
@@ -3882,6 +3885,14 @@
     const el = $(displayId);
     if (el) el.textContent = state[key].toFixed(2) + ' mm';
     try { localStorage.setItem(storeKey, String(state[key])); } catch (_) {}
+    // If Refine inner is ON and the user has NOT yet manually edited inner,
+    // re-seed inner from the new synthetic band so the pink handles track the
+    // L/R/T/B mm controls. Once the user drags any inner handle, we stop
+    // overwriting (per Codex: "once edited, stop overwriting it").
+    if (state.quickInnerRefine && !state.innerUserEdited && state.outer) {
+      seedInnerFromSyntheticBand();
+      if (typeof refreshInnerRefineUI === 'function') refreshInnerRefineUI();
+    }
     scheduleDraw();
   }
 
@@ -4014,11 +4025,17 @@
     const live = state.quickInnerRefine && state.innerUserEdited && state.outer && state.inner;
     info.style.display = live ? '' : 'none';
     if (!live) { state._quickMeasure = null; return; }
-    const m = measureCentering(
-      state.outer,
-      state.inner,
-      state.v2InnerTraceMode ? state.v2InnerTraceOffsetsMm : null,
-    );
+    let m;
+    try {
+      m = measureCentering(
+        state.outer,
+        state.inner,
+        state.v2InnerTraceMode ? state.v2InnerTraceOffsetsMm : null,
+      );
+    } catch (err) {
+      console.error('measureCentering threw:', err);
+      m = null;
+    }
     state._quickMeasure = m;
     if (!m) {
       $('v2-measure-lr').textContent = '— / —';
