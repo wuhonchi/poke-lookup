@@ -413,20 +413,31 @@
              has manually positioned at least one inner handle. Replaces the
              "centred" visual verdict with real per-side mm + PSA grade. -->
         <div id="v2-measure-info" class="mt-2 pt-2 border-t border-zinc-800" style="display:none;">
-          <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Manual inner border</div>
-          <div class="mono text-[12px]">
-            L / R: <span id="v2-measure-lr" class="text-pink-400 font-bold">— / —</span> mm
-            <span class="text-gray-500 ml-1">(<span id="v2-measure-lr-ratio">—</span>)</span>
+          <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Manual inner border · per-corner</div>
+          <!-- Per-corner mm grid: each axis shows both ends so taper is visible.
+               Worst real cross-section drives the grade (Codex methodology). -->
+          <div class="mono text-[11px] leading-tight">
+            <div class="flex justify-between"><span>L:</span><span><span id="v2-measure-l-tl" class="text-pink-400">—</span> <span class="text-gray-600">(TL)</span> · <span id="v2-measure-l-bl" class="text-pink-400">—</span> <span class="text-gray-600">(BL)</span> mm</span></div>
+            <div class="flex justify-between"><span>R:</span><span><span id="v2-measure-r-tr" class="text-pink-400">—</span> <span class="text-gray-600">(TR)</span> · <span id="v2-measure-r-br" class="text-pink-400">—</span> <span class="text-gray-600">(BR)</span> mm</span></div>
+            <div class="flex justify-between"><span>T:</span><span><span id="v2-measure-t-tl" class="text-pink-400">—</span> <span class="text-gray-600">(TL)</span> · <span id="v2-measure-t-tr" class="text-pink-400">—</span> <span class="text-gray-600">(TR)</span> mm</span></div>
+            <div class="flex justify-between"><span>B:</span><span><span id="v2-measure-b-bl" class="text-pink-400">—</span> <span class="text-gray-600">(BL)</span> · <span id="v2-measure-b-br" class="text-pink-400">—</span> <span class="text-gray-600">(BR)</span> mm</span></div>
           </div>
-          <div class="mono text-[12px]">
-            T / B: <span id="v2-measure-tb" class="text-pink-400 font-bold">— / —</span> mm
-            <span class="text-gray-500 ml-1">(<span id="v2-measure-tb-ratio">—</span>)</span>
+          <!-- Real cross-section ratios — 4 of them (plus midLR/midTB when
+               Inner Trace is bowed). The worst is highlighted. -->
+          <div class="mt-2 text-[11px] mono">
+            <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Cross-section ratios</div>
+            <div class="flex justify-between"><span>L/R top:</span><span id="v2-measure-lr-top">—</span></div>
+            <div class="flex justify-between"><span>L/R bottom:</span><span id="v2-measure-lr-bottom">—</span></div>
+            <div class="flex justify-between" id="v2-measure-lr-mid-row" style="display:none;"><span>L/R mid (trace):</span><span id="v2-measure-lr-mid">—</span></div>
+            <div class="flex justify-between"><span>T/B left:</span><span id="v2-measure-tb-left">—</span></div>
+            <div class="flex justify-between"><span>T/B right:</span><span id="v2-measure-tb-right">—</span></div>
+            <div class="flex justify-between" id="v2-measure-tb-mid-row" style="display:none;"><span>T/B mid (trace):</span><span id="v2-measure-tb-mid">—</span></div>
           </div>
-          <div class="mt-2">
+          <div class="mt-2 flex items-center gap-2">
             <span class="grade-badge grade-low" id="v2-measure-grade">—</span>
+            <span id="v2-measure-grade-basis" class="text-[10px] text-gray-500">based on worst section</span>
           </div>
-          <div id="v2-measure-tol-lr" class="text-[10px] text-gray-500 mt-2 leading-snug"></div>
-          <div id="v2-measure-tol-tb" class="text-[10px] text-gray-500 leading-snug"></div>
+          <div id="v2-measure-tol" class="text-[10px] text-gray-500 mt-2 leading-snug"></div>
           <div id="v2-measure-warn" class="text-[10px] mt-1 text-amber-400 leading-snug" style="display:none;"></div>
         </div>
       </div>
@@ -3408,17 +3419,39 @@
 
   // ── Refine inner border — measurement core ─────────────────────────
   // Project a user-edited (or synthetic) inner quad into canonical card space
-  // via the outer-card homography, then compute per-side mm distances from
-  // the canonical card edge.
+  // via the outer-card homography, then compute per-CORNER mm distances from
+  // the canonical card edge. The card edge is a true rectangle in canonical
+  // space; the inner is a quadrilateral (printing + cutting imprecision),
+  // so each side has DIFFERENT mm at the two ends.
+  //
+  // Per Codex methodology review: grade by WORST REAL CROSS-SECTION rather
+  // than midpoint average. A cross-section is a pair of opposite-side
+  // margins at the same end of the card. There are 4 real cross-sections:
+  //   topLR    = L-at-TL  ↔  R-at-TR   (L/R ratio at the top of the card)
+  //   bottomLR = L-at-BL  ↔  R-at-BR   (L/R ratio at the bottom)
+  //   leftTB   = T-at-TL  ↔  B-at-BL   (T/B ratio along the left edge)
+  //   rightTB  = T-at-TR  ↔  B-at-BR   (T/B ratio along the right edge)
+  // Plus, if Inner Trace bows a side, the bowed midpoint adds a 3rd sample:
+  //   midLR / midTB are computed against the opposite side's midpoint.
   //
   // Args:
   //   outer  — 4 image-space points (TL, TR, BR, BL).
   //   inner  — 4 image-space points (TL, TR, BR, BL).
   //   innerTraceOffsetsMm — optional [4] bow offsets per side (T, R, B, L).
-  //     When supplied, the side's "sample point" becomes the bowed midpoint
-  //     of the inner side, not the straight midpoint of the corner pair.
+  //     When supplied, bowed midpoints become additional samples.
   //
-  // Returns { lr, lrRatio, tb, tbRatio, grade, errors[] } or null if degenerate.
+  // Returns:
+  //   {
+  //     mm:       { left:{TL,BL}, right:{TR,BR}, top:{TL,TR}, bottom:{BL,BR} },
+  //     mid:      { l?, r?, t?, b? }                  — bowed mids when set
+  //     sections: { lrTop, lrBottom, lrMid?, tbLeft, tbRight, tbMid? }
+  //     lrRatio:  worst across all LR sections,
+  //     tbRatio:  worst across all TB sections,
+  //     worstAxis: 'lr' | 'tb',
+  //     worstSection: string,                          — which one drove the grade
+  //     grade:    'Gem Mint 10' | …,
+  //     errors:   ['crossed' | 'zero-sum']
+  //   }
   function measureCentering(outer, inner, innerTraceOffsetsMm) {
     if (!outer || !inner) return null;
     if (!validateOuterQuad(outer)) return null;
@@ -3433,66 +3466,90 @@
     if (!H) return null;
     const sX = frame.TW / frame.wMm;
     const sY = frame.TH / frame.hMm;
-    // Project inner corners into canonical.
     const innerCanon = inner.map(p => applyH(H, p));
-    // Apply rotation permutation so [0,1,2,3] = visual [TL, TR, BR, BL].
     const k = (((state.view.rot || 0) % 360) / 90) | 0;
     const shift = (4 - k) % 4;
     const viewInner = [0,1,2,3].map(i => innerCanon[(i + shift) % 4]);
-    // Per side (visual): take midpoint of two corners that define that side.
-    //   Side 0 (Top) : avg of TL + TR  →  canonical y is the T mm
-    //   Side 1 (Right): avg of TR + BR  →  canonical (TW - x) is the R mm
-    //   Side 2 (Bottom): avg of BR + BL →  canonical (TH - y) is the B mm
-    //   Side 3 (Left): avg of BL + TL  →  canonical x is the L mm
-    const sideMid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-    let mids = [
-      sideMid(viewInner[0], viewInner[1]),
-      sideMid(viewInner[1], viewInner[2]),
-      sideMid(viewInner[2], viewInner[3]),
-      sideMid(viewInner[3], viewInner[0]),
-    ];
-    // Inner Trace: if a side has a non-zero offset, bow the sample point
-    // inward by that amount (canonical-space normal × offset × scale).
+    const [iTL, iTR, iBR, iBL] = viewInner;
+    // Per-corner-axis margins in mm.
+    const mm = {
+      left:   { TL: iTL.x / sX,             BL: iBL.x / sX },
+      right:  { TR: (frame.TW - iTR.x)/sX,  BR: (frame.TW - iBR.x)/sX },
+      top:    { TL: iTL.y / sY,             TR: iTR.y / sY },
+      bottom: { BL: (frame.TH - iBL.y)/sY,  BR: (frame.TH - iBR.y)/sY },
+    };
+    // Inner-trace bowed midpoints (only when offset ≠ 0). These act as a
+    // THIRD sample per axis — Codex: "if you add mid samples, pair them
+    // with the opposite side midpoint too: midLR, midTB".
+    const mid = {};
     if (innerTraceOffsetsMm) {
       const permOffs = [0,1,2,3].map(i => innerTraceOffsetsMm[(i + shift) % 4]);
-      for (let s = 0; s < 4; s++) {
-        if (Math.abs(permOffs[s]) < 0.001) continue;
+      const sideMid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+      const straightMids = [
+        sideMid(viewInner[0], viewInner[1]),  // Top
+        sideMid(viewInner[1], viewInner[2]),  // Right
+        sideMid(viewInner[2], viewInner[3]),  // Bottom
+        sideMid(viewInner[3], viewInner[0]),  // Left
+      ];
+      const bowedMids = straightMids.map((m, s) => {
+        if (Math.abs(permOffs[s]) < 0.001) return null;
         const n = _v2SideNormalCanonical(s);
         const sFactor = (s === 0 || s === 2) ? sY : sX;
         const off = permOffs[s] * sFactor;
-        mids[s] = { x: mids[s].x + n.x * off, y: mids[s].y + n.y * off };
-      }
+        return { x: m.x + n.x * off, y: m.y + n.y * off };
+      });
+      if (bowedMids[0]) mid.t = bowedMids[0].y / sY;
+      if (bowedMids[2]) mid.b = (frame.TH - bowedMids[2].y) / sY;
+      if (bowedMids[3]) mid.l = bowedMids[3].x / sX;
+      if (bowedMids[1]) mid.r = (frame.TW - bowedMids[1].x) / sX;
     }
-    // Canonical mm per side.
-    const tMm = mids[0].y / sY;
-    const rMm = (frame.TW - mids[1].x) / sX;
-    const bMm = (frame.TH - mids[2].y) / sY;
-    const lMm = mids[3].x / sX;
-    const errors = [];
-    if (tMm < 0 || rMm < 0 || bMm < 0 || lMm < 0) errors.push('crossed');
-    if (tMm + bMm <= 0 || lMm + rMm <= 0)         errors.push('zero-sum');
-    // Per-axis ratio = smaller / (L + R) (or T+B); higher = more centred.
+    // Per-cross-section ratio: smaller / (smaller + larger). Higher = more
+    // centred. null if either side is non-positive (degenerate).
     const ratio = (a, b) => {
-      const sum = a + b;
-      if (sum <= 0) return 0;
-      return Math.min(a, b) / sum;
+      if (!(a > 0) || !(b > 0)) return null;
+      return Math.min(a, b) / (a + b);
     };
-    const lrRatio = ratio(lMm, rMm);
-    const tbRatio = ratio(tMm, bMm);
+    const sections = {
+      lrTop:    ratio(mm.left.TL, mm.right.TR),
+      lrBottom: ratio(mm.left.BL, mm.right.BR),
+      tbLeft:   ratio(mm.top.TL,  mm.bottom.BL),
+      tbRight:  ratio(mm.top.TR,  mm.bottom.BR),
+    };
+    if (mid.l !== undefined && mid.r !== undefined) {
+      sections.lrMid = ratio(mid.l, mid.r);
+    }
+    if (mid.t !== undefined && mid.b !== undefined) {
+      sections.tbMid = ratio(mid.t, mid.b);
+    }
+    const errors = [];
+    const anyNeg = ['left.TL','left.BL','right.TR','right.BR',
+                    'top.TL','top.TR','bottom.BL','bottom.BR']
+      .some(p => { const [a,b] = p.split('.'); return mm[a][b] < 0; });
+    if (anyNeg) errors.push('crossed');
+    const allLR = [sections.lrTop, sections.lrBottom, sections.lrMid].filter(v => v != null);
+    const allTB = [sections.tbLeft, sections.tbRight, sections.tbMid].filter(v => v != null);
+    if (allLR.length === 0 || allTB.length === 0) errors.push('zero-sum');
+    // WORST real cross-section drives the grade (Codex verdict).
+    const lrRatio = allLR.length ? Math.min(...allLR) : 0;
+    const tbRatio = allTB.length ? Math.min(...allTB) : 0;
     const worst = Math.min(lrRatio, tbRatio);
-    // Find best grade where smaller ≥ threshold ratio (≥ 0.45 = PSA10, etc).
+    const worstAxis = lrRatio <= tbRatio ? 'lr' : 'tb';
+    // Identify which named cross-section was the bottleneck (for UI label).
+    const lrPairs = { lrTop: sections.lrTop, lrBottom: sections.lrBottom, lrMid: sections.lrMid };
+    const tbPairs = { tbLeft: sections.tbLeft, tbRight: sections.tbRight, tbMid: sections.tbMid };
+    const findMinKey = (obj) => Object.entries(obj)
+      .filter(([, v]) => v != null)
+      .reduce((acc, kv) => acc == null || kv[1] < acc[1] ? kv : acc, null);
+    const minLR = findMinKey(lrPairs);
+    const minTB = findMinKey(tbPairs);
+    const worstSection = worstAxis === 'lr' ? (minLR ? minLR[0] : 'lrTop')
+                                            : (minTB ? minTB[0] : 'tbLeft');
     let grade = 'Below grade';
     for (const t of PSA_THRESHOLDS) {
       if (worst >= t.ratio) { grade = t.grade; break; }
     }
-    return {
-      lr: [lMm, rMm],     // [L, R]
-      tb: [tMm, bMm],     // [T, B]
-      lrRatio, tbRatio,
-      grade,
-      errors,
-      frame,
-    };
+    return { mm, mid, sections, lrRatio, tbRatio, worstAxis, worstSection,
+             grade, errors, frame };
   }
 
   // PSA-10-acceptable range for the SECOND side given the FIRST is fixed.
@@ -4050,49 +4107,98 @@
       m = null;
     }
     state._quickMeasure = m;
+    const setText = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+    const fmt1 = v => (v == null ? '—' : v.toFixed(2));
+    const ratioPct = (r) => {
+      if (r == null) return '—';
+      const small = Math.round(r * 100);
+      return `${small}/${100 - small}`;
+    };
     if (!m) {
-      $('v2-measure-lr').textContent = '— / —';
-      $('v2-measure-tb').textContent = '— / —';
-      $('v2-measure-lr-ratio').textContent = '—';
-      $('v2-measure-tb-ratio').textContent = '—';
-      $('v2-measure-grade').textContent = '—';
+      ['v2-measure-l-tl','v2-measure-l-bl','v2-measure-r-tr','v2-measure-r-br',
+       'v2-measure-t-tl','v2-measure-t-tr','v2-measure-b-bl','v2-measure-b-br',
+       'v2-measure-lr-top','v2-measure-lr-bottom','v2-measure-lr-mid',
+       'v2-measure-tb-left','v2-measure-tb-right','v2-measure-tb-mid']
+        .forEach(id => setText(id, '—'));
+      setText('v2-measure-grade', '—');
       return;
     }
-    const fmt = (a, b) => `${a.toFixed(2)} / ${b.toFixed(2)}`;
-    const ratioPct = (r) => {
-      const small = Math.round(r * 100);
-      const large = 100 - small;
-      return `${small}/${large}`;
-    };
-    $('v2-measure-lr').textContent = fmt(m.lr[0], m.lr[1]);
-    $('v2-measure-tb').textContent = fmt(m.tb[0], m.tb[1]);
-    $('v2-measure-lr-ratio').textContent = ratioPct(m.lrRatio);
-    $('v2-measure-tb-ratio').textContent = ratioPct(m.tbRatio);
+    // Per-corner mm
+    setText('v2-measure-l-tl', fmt1(m.mm.left.TL));
+    setText('v2-measure-l-bl', fmt1(m.mm.left.BL));
+    setText('v2-measure-r-tr', fmt1(m.mm.right.TR));
+    setText('v2-measure-r-br', fmt1(m.mm.right.BR));
+    setText('v2-measure-t-tl', fmt1(m.mm.top.TL));
+    setText('v2-measure-t-tr', fmt1(m.mm.top.TR));
+    setText('v2-measure-b-bl', fmt1(m.mm.bottom.BL));
+    setText('v2-measure-b-br', fmt1(m.mm.bottom.BR));
+    // Cross-section ratios — highlight the worst one in amber.
+    const sect = m.sections;
+    const sectionRows = [
+      ['v2-measure-lr-top',    sect.lrTop,    'lrTop'],
+      ['v2-measure-lr-bottom', sect.lrBottom, 'lrBottom'],
+      ['v2-measure-lr-mid',    sect.lrMid,    'lrMid'],
+      ['v2-measure-tb-left',   sect.tbLeft,   'tbLeft'],
+      ['v2-measure-tb-right',  sect.tbRight,  'tbRight'],
+      ['v2-measure-tb-mid',    sect.tbMid,    'tbMid'],
+    ];
+    for (const [id, r, key] of sectionRows) {
+      const el = $(id);
+      if (!el) continue;
+      el.textContent = ratioPct(r);
+      el.className = (key === m.worstSection)
+        ? 'text-amber-400 font-bold'
+        : 'text-pink-400';
+    }
+    // Mid rows visible only when Inner Trace is on and a bow exists on that axis.
+    const lrMidRow = $('v2-measure-lr-mid-row');
+    const tbMidRow = $('v2-measure-tb-mid-row');
+    if (lrMidRow) lrMidRow.style.display = (sect.lrMid != null) ? '' : 'none';
+    if (tbMidRow) tbMidRow.style.display = (sect.tbMid != null) ? '' : 'none';
+    // Grade badge
     const grade = $('v2-measure-grade');
     grade.textContent = m.grade;
-    // Colour the grade badge by PSA tier.
     grade.className = 'grade-badge ' + (
       m.grade.startsWith('Gem')   ? 'grade-10' :
       m.grade.startsWith('Mint')  ? 'grade-9'  :
       m.grade.startsWith('NM-MT') ? 'grade-8'  :
       m.grade.startsWith('NM')    ? 'grade-7'  : 'grade-low'
     );
-    // Per-axis tolerance hint: given the larger side, the smaller side must
-    // fit in [smaller_min, larger_max] for PSA10. We show the range for the
-    // OTHER side relative to the smaller (locked) one.
-    const psa10Hint = (a, b, axis) => {
-      if (a <= 0 || b <= 0) return '';
-      const small = Math.min(a, b);
-      const big   = Math.max(a, b);
-      const [lo, hi] = psa10OtherSideRange(small);
-      // If big is already inside [lo, hi], we're fine.
-      const ok = big >= lo && big <= hi;
-      const otherAxis = (axis === 'L/R') ? 'R/L' : 'T/B';
-      if (ok) return `${axis} ratio ${ratioPct(small / (a + b))} — meets PSA 10.`;
-      return `${axis}: smaller side ${small.toFixed(2)} mm → the other side must be ${lo.toFixed(2)}–${hi.toFixed(2)} mm for PSA 10 (currently ${big.toFixed(2)}).`;
+    const sectionLabels = {
+      lrTop: 'L/R at top', lrBottom: 'L/R at bottom', lrMid: 'L/R at trace mid',
+      tbLeft: 'T/B at left', tbRight: 'T/B at right', tbMid: 'T/B at trace mid',
     };
-    $('v2-measure-tol-lr').textContent = psa10Hint(m.lr[0], m.lr[1], 'L/R');
-    $('v2-measure-tol-tb').textContent = psa10Hint(m.tb[0], m.tb[1], 'T/B');
+    setText('v2-measure-grade-basis',
+      `worst section: ${sectionLabels[m.worstSection] || m.worstSection}`);
+    // Tolerance hint: PSA-10 acceptable range for the OTHER side of the
+    // worst section, given the locked (smaller) side.
+    const sideOfWorst = (() => {
+      const pair = ({
+        lrTop:    [m.mm.left.TL, m.mm.right.TR, 'L (TL)', 'R (TR)'],
+        lrBottom: [m.mm.left.BL, m.mm.right.BR, 'L (BL)', 'R (BR)'],
+        lrMid:    [m.mid.l,      m.mid.r,       'L (mid)','R (mid)'],
+        tbLeft:   [m.mm.top.TL,  m.mm.bottom.BL,'T (TL)', 'B (BL)'],
+        tbRight:  [m.mm.top.TR,  m.mm.bottom.BR,'T (TR)', 'B (BR)'],
+        tbMid:    [m.mid.t,      m.mid.b,       'T (mid)','B (mid)'],
+      })[m.worstSection];
+      return pair || null;
+    })();
+    let tol = '';
+    if (sideOfWorst) {
+      const [a, b, aLbl, bLbl] = sideOfWorst;
+      if (a > 0 && b > 0) {
+        const small = Math.min(a, b);
+        const big   = Math.max(a, b);
+        const smallLbl = (a <= b) ? aLbl : bLbl;
+        const bigLbl   = (a <= b) ? bLbl : aLbl;
+        const [lo, hi] = psa10OtherSideRange(small);
+        const ok = big >= lo && big <= hi;
+        tol = ok
+          ? `Worst section ratio ${ratioPct(Math.min(a,b)/(a+b))} — meets PSA 10.`
+          : `${smallLbl} = ${small.toFixed(2)} mm → ${bigLbl} must be ${lo.toFixed(2)}–${hi.toFixed(2)} mm for PSA 10 (currently ${big.toFixed(2)}).`;
+      }
+    }
+    setText('v2-measure-tol', tol);
     const warn = $('v2-measure-warn');
     if (warn) {
       if (m.errors.includes('crossed')) {
