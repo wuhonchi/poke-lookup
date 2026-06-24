@@ -414,61 +414,70 @@
              "centred" visual verdict with real per-side mm + PSA grade. -->
         <div id="v2-measure-info" class="mt-2 pt-2 border-t border-zinc-800" style="display:none;">
           <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Manual inner border · per-corner</div>
-          <!-- Visual schematic: card-shaped SVG with per-corner mm + per-edge
-               cross-section ratios at their geometric positions. Worst
-               section gets an amber edge accent. (Codex r-schematic.) -->
+          <!-- Visual schematic (Codex r-schematic-v2): mm sit OUTSIDE each
+               corner, the 2 cross-section ratios that touch that corner
+               sit INSIDE the corner. No edge-midpoint labels. Worst
+               section: edge stroke + the 2 matching corner-ratio labels
+               turn amber. -->
           <div class="mb-3 flex justify-center">
-            <svg id="v2-measure-svg" viewBox="0 0 320 380" class="w-full" style="max-width: 320px; height: auto;" xmlns="http://www.w3.org/2000/svg">
-              <!-- Card outline (canonical portrait 63 × 88 mm; will be flipped if landscape via JS class) -->
-              <rect x="60" y="50" width="200" height="280" rx="6"
+            <svg id="v2-measure-svg" viewBox="0 0 360 440" class="w-full" style="max-width: 320px; height: auto;" xmlns="http://www.w3.org/2000/svg">
+              <!-- Card outline at (80, 70) → (280, 370) — 200 × 300, padded so the
+                   outside-mm labels have breathing room above / below / sides. -->
+              <rect x="80" y="70" width="200" height="300" rx="6"
                     fill="#0f172a" stroke="#475569" stroke-width="1.2"/>
               <!-- Edge accent rules — coloured amber when that side is the worst section -->
-              <line id="v2sch-edge-top"    x1="60"  y1="50"  x2="260" y2="50"
+              <line id="v2sch-edge-top"    x1="80"  y1="70"  x2="280" y2="70"
                     stroke="#475569" stroke-width="2"/>
-              <line id="v2sch-edge-bottom" x1="60"  y1="330" x2="260" y2="330"
+              <line id="v2sch-edge-bottom" x1="80"  y1="370" x2="280" y2="370"
                     stroke="#475569" stroke-width="2"/>
-              <line id="v2sch-edge-left"   x1="60"  y1="50"  x2="60"  y2="330"
+              <line id="v2sch-edge-left"   x1="80"  y1="70"  x2="80"  y2="370"
                     stroke="#475569" stroke-width="2"/>
-              <line id="v2sch-edge-right"  x1="260" y1="50"  x2="260" y2="330"
+              <line id="v2sch-edge-right"  x1="280" y1="70"  x2="280" y2="370"
                     stroke="#475569" stroke-width="2"/>
-              <!-- Trace bisectors (Inner Trace ON only) -->
-              <line id="v2sch-bisect-h" x1="60" y1="190" x2="260" y2="190"
-                    stroke="#ec4899" stroke-width="0.6" stroke-dasharray="3 3" opacity="0" />
-              <line id="v2sch-bisect-v" x1="160" y1="50" x2="160" y2="330"
-                    stroke="#ec4899" stroke-width="0.6" stroke-dasharray="3 3" opacity="0" />
-              <!-- Edge ratio labels (above/below/left/right of card) -->
-              <g font-family="ui-monospace, monospace" font-size="11" fill="#cbd5e1" text-anchor="middle">
-                <text x="160" y="20" font-size="9" fill="#64748b">L / R · top</text>
-                <text id="v2sch-r-lrTop"    x="160" y="36">—</text>
-                <text x="160" y="358" font-size="9" fill="#64748b">L / R · bottom</text>
-                <text id="v2sch-r-lrBottom" x="160" y="372">—</text>
-                <text x="22"  y="186" font-size="9" fill="#64748b">T / B</text>
-                <text x="22"  y="200" font-size="9" fill="#64748b">left</text>
-                <text id="v2sch-r-tbLeft"   x="22"  y="216">—</text>
-                <text x="298" y="186" font-size="9" fill="#64748b">T / B</text>
-                <text x="298" y="200" font-size="9" fill="#64748b">right</text>
-                <text id="v2sch-r-tbRight"  x="298" y="216">—</text>
-                <!-- Mid (trace) ratios — only shown when Inner Trace bows that axis -->
-                <text id="v2sch-r-lrMid" x="160" y="195" font-size="10" fill="#ec4899" opacity="0">—</text>
-                <text id="v2sch-r-tbMid" x="165" y="186" font-size="10" fill="#ec4899" opacity="0" text-anchor="start">—</text>
+              <!-- Trace bisectors (Inner Trace ON only) — no labels; the mid
+                   ratios live in the compact list below the SVG. -->
+              <line id="v2sch-bisect-h" x1="80"  y1="220" x2="280" y2="220"
+                    stroke="#ec4899" stroke-width="0.6" stroke-dasharray="3 3" opacity="0"/>
+              <line id="v2sch-bisect-v" x1="180" y1="70"  x2="180" y2="370"
+                    stroke="#ec4899" stroke-width="0.6" stroke-dasharray="3 3" opacity="0"/>
+
+              <!-- Per-corner mm labels (OUTSIDE card edges) -->
+              <g font-family="ui-monospace, monospace" font-size="11" fill="#ec4899">
+                <!-- TL above top edge -->
+                <text id="v2sch-c-tl-t" x="88" y="45">—</text>
+                <text id="v2sch-c-tl-l" x="88" y="60">—</text>
+                <!-- TR above top edge, right-aligned -->
+                <text id="v2sch-c-tr-t" x="272" y="45" text-anchor="end">—</text>
+                <text id="v2sch-c-tr-r" x="272" y="60" text-anchor="end">—</text>
+                <!-- BL below bottom edge -->
+                <text id="v2sch-c-bl-b" x="88" y="396">—</text>
+                <text id="v2sch-c-bl-l" x="88" y="411">—</text>
+                <!-- BR below bottom edge, right-aligned -->
+                <text id="v2sch-c-br-b" x="272" y="396" text-anchor="end">—</text>
+                <text id="v2sch-c-br-r" x="272" y="411" text-anchor="end">—</text>
               </g>
-              <!-- Per-corner mm labels (2 numbers per corner: T/L for TL, etc) -->
-              <g font-family="ui-monospace, monospace" font-size="10" fill="#ec4899">
-                <!-- TL -->
-                <text id="v2sch-c-tl-t" x="68"  y="65">—</text>
-                <text id="v2sch-c-tl-l" x="68"  y="78">—</text>
-                <!-- TR -->
-                <text id="v2sch-c-tr-t" x="252" y="65" text-anchor="end">—</text>
-                <text id="v2sch-c-tr-r" x="252" y="78" text-anchor="end">—</text>
-                <!-- BR -->
-                <text id="v2sch-c-br-b" x="252" y="306" text-anchor="end">—</text>
-                <text id="v2sch-c-br-r" x="252" y="319" text-anchor="end">—</text>
-                <!-- BL -->
-                <text id="v2sch-c-bl-b" x="68"  y="306">—</text>
-                <text id="v2sch-c-bl-l" x="68"  y="319">—</text>
+
+              <!-- Per-corner section ratios (INSIDE card edges).
+                   Each corner gets BOTH the L/R section ratio for its row and
+                   the T/B section ratio for its column. Same section appears
+                   at both of its endpoints (e.g. L/R top at TL + TR). -->
+              <g font-family="ui-monospace, monospace" font-size="9" fill="#cbd5e1">
+                <!-- TL inside, top-left of card -->
+                <text id="v2sch-tl-lr" x="88" y="92">L/R —</text>
+                <text id="v2sch-tl-tb" x="88" y="106">T/B —</text>
+                <!-- TR inside, top-right of card -->
+                <text id="v2sch-tr-lr" x="272" y="92"  text-anchor="end">L/R —</text>
+                <text id="v2sch-tr-tb" x="272" y="106" text-anchor="end">T/B —</text>
+                <!-- BL inside, bottom-left of card -->
+                <text id="v2sch-bl-tb" x="88" y="336">T/B —</text>
+                <text id="v2sch-bl-lr" x="88" y="350">L/R —</text>
+                <!-- BR inside, bottom-right of card -->
+                <text id="v2sch-br-tb" x="272" y="336" text-anchor="end">T/B —</text>
+                <text id="v2sch-br-lr" x="272" y="350" text-anchor="end">L/R —</text>
               </g>
-              <!-- Centred grade badge — set via JS so it picks up colour classes -->
-              <foreignObject x="100" y="160" width="120" height="60">
+
+              <!-- Centred grade badge — foreignObject so it picks up grade-badge CSS -->
+              <foreignObject x="110" y="200" width="140" height="40">
                 <div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;">
                   <span id="v2sch-grade" class="grade-badge grade-low" style="font-size: 13px; padding: 4px 12px;">—</span>
                 </div>
@@ -4183,10 +4192,11 @@
        'v2-measure-tb-left','v2-measure-tb-right','v2-measure-tb-mid',
        // SVG schematic placeholders too
        'v2sch-c-tl-t','v2sch-c-tl-l','v2sch-c-tr-t','v2sch-c-tr-r',
-       'v2sch-c-br-b','v2sch-c-br-r','v2sch-c-bl-b','v2sch-c-bl-l',
-       'v2sch-r-lrTop','v2sch-r-lrBottom','v2sch-r-tbLeft','v2sch-r-tbRight',
-       'v2sch-r-lrMid','v2sch-r-tbMid']
+       'v2sch-c-br-b','v2sch-c-br-r','v2sch-c-bl-b','v2sch-c-bl-l']
         .forEach(id => setText(id, '—'));
+      ['v2sch-tl-lr','v2sch-tl-tb','v2sch-tr-lr','v2sch-tr-tb',
+       'v2sch-br-tb','v2sch-br-lr','v2sch-bl-tb','v2sch-bl-lr']
+        .forEach(id => setText(id, ''));
       setText('v2-measure-grade', '—');
       setText('v2sch-grade', '—');
       setText('v2-measure-grade-margin', '');
@@ -4210,28 +4220,22 @@
     setText('v2sch-c-br-r', 'R ' + fmt1(m.mm.right.BR));
     setText('v2sch-c-bl-b', 'B ' + fmt1(m.mm.bottom.BL));
     setText('v2sch-c-bl-l', 'L ' + fmt1(m.mm.left.BL));
-    // Cross-section ratios — highlight the worst one in amber.
+    // Cross-section ratios — list (fallback below SVG) + SVG edge accent.
     const sect = m.sections;
     const sectionRows = [
-      ['v2-measure-lr-top',    sect.lrTop,    'lrTop',    'v2sch-r-lrTop',    'v2sch-edge-top'   ],
-      ['v2-measure-lr-bottom', sect.lrBottom, 'lrBottom', 'v2sch-r-lrBottom', 'v2sch-edge-bottom'],
-      ['v2-measure-lr-mid',    sect.lrMid,    'lrMid',    'v2sch-r-lrMid',    null               ],
-      ['v2-measure-tb-left',   sect.tbLeft,   'tbLeft',   'v2sch-r-tbLeft',   'v2sch-edge-left'  ],
-      ['v2-measure-tb-right',  sect.tbRight,  'tbRight',  'v2sch-r-tbRight',  'v2sch-edge-right' ],
-      ['v2-measure-tb-mid',    sect.tbMid,    'tbMid',    'v2sch-r-tbMid',    null               ],
+      ['v2-measure-lr-top',    sect.lrTop,    'lrTop',    'v2sch-edge-top'   ],
+      ['v2-measure-lr-bottom', sect.lrBottom, 'lrBottom', 'v2sch-edge-bottom'],
+      ['v2-measure-lr-mid',    sect.lrMid,    'lrMid',    null               ],
+      ['v2-measure-tb-left',   sect.tbLeft,   'tbLeft',   'v2sch-edge-left'  ],
+      ['v2-measure-tb-right',  sect.tbRight,  'tbRight',  'v2sch-edge-right' ],
+      ['v2-measure-tb-mid',    sect.tbMid,    'tbMid',    null               ],
     ];
-    for (const [listId, r, key, svgId, edgeId] of sectionRows) {
+    for (const [listId, r, key, edgeId] of sectionRows) {
       const el = $(listId);
       const isWorst = (key === m.worstSection);
       if (el) {
         el.textContent = ratioPct(r);
         el.className = isWorst ? 'text-amber-400 font-bold' : 'text-pink-400';
-      }
-      const svgEl = $(svgId);
-      if (svgEl) {
-        svgEl.textContent = ratioPct(r);
-        svgEl.setAttribute('fill', isWorst ? '#fbbf24' : '#cbd5e1');
-        svgEl.setAttribute('font-weight', isWorst ? '700' : '400');
       }
       // Amber the corresponding card-edge line on the SVG.
       const edgeEl = $(edgeId);
@@ -4240,16 +4244,40 @@
         edgeEl.setAttribute('stroke-width', isWorst ? '3' : '1.2');
       }
     }
-    // Trace bisectors — visible only when an inner-trace bow on that axis exists.
+    // Per-corner ratio labels INSIDE each corner. Each section appears at
+    // its 2 endpoint corners — when worst, both labels turn amber.
+    //   L/R top    → TL.lr + TR.lr
+    //   L/R bottom → BL.lr + BR.lr
+    //   T/B left   → TL.tb + BL.tb
+    //   T/B right  → TR.tb + BR.tb
+    const cornerRatioCells = [
+      ['v2sch-tl-lr', sect.lrTop,    'lrTop'   ],
+      ['v2sch-tl-tb', sect.tbLeft,   'tbLeft'  ],
+      ['v2sch-tr-lr', sect.lrTop,    'lrTop'   ],
+      ['v2sch-tr-tb', sect.tbRight,  'tbRight' ],
+      ['v2sch-br-lr', sect.lrBottom, 'lrBottom'],
+      ['v2sch-br-tb', sect.tbRight,  'tbRight' ],
+      ['v2sch-bl-lr', sect.lrBottom, 'lrBottom'],
+      ['v2sch-bl-tb', sect.tbLeft,   'tbLeft'  ],
+    ];
+    for (const [id, r, key] of cornerRatioCells) {
+      const el = $(id);
+      if (!el) continue;
+      const prefix = id.endsWith('-lr') ? 'L/R ' : 'T/B ';
+      el.textContent = prefix + ratioPct(r);
+      const isWorst = (key === m.worstSection);
+      el.setAttribute('fill', isWorst ? '#fbbf24' : '#cbd5e1');
+      el.setAttribute('font-weight', isWorst ? '700' : '400');
+    }
+    // Trace bisectors — visible (no label, per Codex r-schematic-v2) only when
+    // the corresponding inner-trace bow exists. The mid ratios live in the
+    // compact list below the SVG, not on the bisector.
     const bisectH = $('v2sch-bisect-h');
     const bisectV = $('v2sch-bisect-v');
-    const tMid = $('v2sch-r-tbMid'); // shown next to vertical bisector
-    const lMid = $('v2sch-r-lrMid'); // shown next to horizontal bisector
     if (bisectH) bisectH.setAttribute('opacity', sect.lrMid != null ? '0.7' : '0');
     if (bisectV) bisectV.setAttribute('opacity', sect.tbMid != null ? '0.7' : '0');
-    if (lMid)    lMid.setAttribute('opacity',     sect.lrMid != null ? '1' : '0');
-    if (tMid)    tMid.setAttribute('opacity',     sect.tbMid != null ? '1' : '0');
-    // Mid rows visible only when Inner Trace is on and a bow exists on that axis.
+    // Mid rows visible in the fallback list only when Inner Trace is on
+    // and a bow exists on that axis.
     const lrMidRow = $('v2-measure-lr-mid-row');
     const tbMidRow = $('v2-measure-tb-mid-row');
     if (lrMidRow) lrMidRow.style.display = (sect.lrMid != null) ? '' : 'none';
