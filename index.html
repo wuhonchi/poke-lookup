@@ -1612,11 +1612,24 @@
     const p = state[state.selected.set][state.selected.idx];
     p.x = Math.max(0, Math.min(state.imgW, p.x + dx));
     p.y = Math.max(0, Math.min(state.imgH, p.y + dy));
+    // Mark the edit so the same trackers as drag fire: Quick Band strips
+    // greying, Quick → Precise auto-place stops overwriting, and the live
+    // measurement strip refreshes immediately.
+    const set = state.selected.set;
+    if (set === 'outer' || set === 'outerMid') {
+      state.outerUserEdited = true;
+    } else if (set === 'inner' || set === 'innerMid') {
+      state.innerUserEdited = true;
+      if (state.mode === 'quick' && state.quickInnerRefine &&
+          typeof refreshInnerRefineUI === 'function') {
+        refreshInnerRefineUI();
+      }
+    }
     // Apply proportional mid-tracking when a corner is nudged in
     // refine mode — same behaviour as corner drag.
     if (state.refineMode &&
-        (state.selected.set === 'outer' || state.selected.set === 'inner')) {
-      const mids = state[state.selected.set + 'Mid'];
+        (set === 'outer' || set === 'inner')) {
+      const mids = state[set + 'Mid'];
       if (mids && mids.length === 8) {
         const i = state.selected.idx;
         mids[i * 2].x += (2 / 3) * dx;
