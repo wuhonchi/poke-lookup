@@ -414,16 +414,74 @@
              "centred" visual verdict with real per-side mm + PSA grade. -->
         <div id="v2-measure-info" class="mt-2 pt-2 border-t border-zinc-800" style="display:none;">
           <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Manual inner border · per-corner</div>
-          <!-- Per-corner mm grid: each axis shows both ends so taper is visible.
-               Worst real cross-section drives the grade (Codex methodology). -->
+          <!-- Visual schematic: card-shaped SVG with per-corner mm + per-edge
+               cross-section ratios at their geometric positions. Worst
+               section gets an amber edge accent. (Codex r-schematic.) -->
+          <div class="mb-3 flex justify-center">
+            <svg id="v2-measure-svg" viewBox="0 0 320 380" class="w-full" style="max-width: 320px; height: auto;" xmlns="http://www.w3.org/2000/svg">
+              <!-- Card outline (canonical portrait 63 × 88 mm; will be flipped if landscape via JS class) -->
+              <rect x="60" y="50" width="200" height="280" rx="6"
+                    fill="#0f172a" stroke="#475569" stroke-width="1.2"/>
+              <!-- Edge accent rules — coloured amber when that side is the worst section -->
+              <line id="v2sch-edge-top"    x1="60"  y1="50"  x2="260" y2="50"
+                    stroke="#475569" stroke-width="2"/>
+              <line id="v2sch-edge-bottom" x1="60"  y1="330" x2="260" y2="330"
+                    stroke="#475569" stroke-width="2"/>
+              <line id="v2sch-edge-left"   x1="60"  y1="50"  x2="60"  y2="330"
+                    stroke="#475569" stroke-width="2"/>
+              <line id="v2sch-edge-right"  x1="260" y1="50"  x2="260" y2="330"
+                    stroke="#475569" stroke-width="2"/>
+              <!-- Trace bisectors (Inner Trace ON only) -->
+              <line id="v2sch-bisect-h" x1="60" y1="190" x2="260" y2="190"
+                    stroke="#ec4899" stroke-width="0.6" stroke-dasharray="3 3" opacity="0" />
+              <line id="v2sch-bisect-v" x1="160" y1="50" x2="160" y2="330"
+                    stroke="#ec4899" stroke-width="0.6" stroke-dasharray="3 3" opacity="0" />
+              <!-- Edge ratio labels (above/below/left/right of card) -->
+              <g font-family="ui-monospace, monospace" font-size="11" fill="#cbd5e1" text-anchor="middle">
+                <text x="160" y="20" font-size="9" fill="#64748b">L / R · top</text>
+                <text id="v2sch-r-lrTop"    x="160" y="36">—</text>
+                <text x="160" y="358" font-size="9" fill="#64748b">L / R · bottom</text>
+                <text id="v2sch-r-lrBottom" x="160" y="372">—</text>
+                <text x="22"  y="186" font-size="9" fill="#64748b">T / B</text>
+                <text x="22"  y="200" font-size="9" fill="#64748b">left</text>
+                <text id="v2sch-r-tbLeft"   x="22"  y="216">—</text>
+                <text x="298" y="186" font-size="9" fill="#64748b">T / B</text>
+                <text x="298" y="200" font-size="9" fill="#64748b">right</text>
+                <text id="v2sch-r-tbRight"  x="298" y="216">—</text>
+                <!-- Mid (trace) ratios — only shown when Inner Trace bows that axis -->
+                <text id="v2sch-r-lrMid" x="160" y="195" font-size="10" fill="#ec4899" opacity="0">—</text>
+                <text id="v2sch-r-tbMid" x="165" y="186" font-size="10" fill="#ec4899" opacity="0" text-anchor="start">—</text>
+              </g>
+              <!-- Per-corner mm labels (2 numbers per corner: T/L for TL, etc) -->
+              <g font-family="ui-monospace, monospace" font-size="10" fill="#ec4899">
+                <!-- TL -->
+                <text id="v2sch-c-tl-t" x="68"  y="65">—</text>
+                <text id="v2sch-c-tl-l" x="68"  y="78">—</text>
+                <!-- TR -->
+                <text id="v2sch-c-tr-t" x="252" y="65" text-anchor="end">—</text>
+                <text id="v2sch-c-tr-r" x="252" y="78" text-anchor="end">—</text>
+                <!-- BR -->
+                <text id="v2sch-c-br-b" x="252" y="306" text-anchor="end">—</text>
+                <text id="v2sch-c-br-r" x="252" y="319" text-anchor="end">—</text>
+                <!-- BL -->
+                <text id="v2sch-c-bl-b" x="68"  y="306">—</text>
+                <text id="v2sch-c-bl-l" x="68"  y="319">—</text>
+              </g>
+              <!-- Centred grade badge — set via JS so it picks up colour classes -->
+              <foreignObject x="100" y="160" width="120" height="60">
+                <div xmlns="http://www.w3.org/1999/xhtml" style="text-align:center;">
+                  <span id="v2sch-grade" class="grade-badge grade-low" style="font-size: 13px; padding: 4px 12px;">—</span>
+                </div>
+              </foreignObject>
+            </svg>
+          </div>
+          <!-- Compact tabular fallback (mobile-narrow + accessibility) -->
           <div class="mono text-[11px] leading-tight">
             <div class="flex justify-between"><span>L:</span><span><span id="v2-measure-l-tl" class="text-pink-400">—</span> <span class="text-gray-600">(TL)</span> · <span id="v2-measure-l-bl" class="text-pink-400">—</span> <span class="text-gray-600">(BL)</span> mm</span></div>
             <div class="flex justify-between"><span>R:</span><span><span id="v2-measure-r-tr" class="text-pink-400">—</span> <span class="text-gray-600">(TR)</span> · <span id="v2-measure-r-br" class="text-pink-400">—</span> <span class="text-gray-600">(BR)</span> mm</span></div>
             <div class="flex justify-between"><span>T:</span><span><span id="v2-measure-t-tl" class="text-pink-400">—</span> <span class="text-gray-600">(TL)</span> · <span id="v2-measure-t-tr" class="text-pink-400">—</span> <span class="text-gray-600">(TR)</span> mm</span></div>
             <div class="flex justify-between"><span>B:</span><span><span id="v2-measure-b-bl" class="text-pink-400">—</span> <span class="text-gray-600">(BL)</span> · <span id="v2-measure-b-br" class="text-pink-400">—</span> <span class="text-gray-600">(BR)</span> mm</span></div>
           </div>
-          <!-- Real cross-section ratios — 4 of them (plus midLR/midTB when
-               Inner Trace is bowed). The worst is highlighted. -->
           <div class="mt-2 text-[11px] mono">
             <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-0.5">Cross-section ratios</div>
             <div class="flex justify-between"><span>L/R top:</span><span id="v2-measure-lr-top">—</span></div>
@@ -433,10 +491,11 @@
             <div class="flex justify-between"><span>T/B right:</span><span id="v2-measure-tb-right">—</span></div>
             <div class="flex justify-between" id="v2-measure-tb-mid-row" style="display:none;"><span>T/B mid (trace):</span><span id="v2-measure-tb-mid">—</span></div>
           </div>
-          <div class="mt-2 flex items-center gap-2">
+          <div class="mt-2 flex items-center gap-2 flex-wrap">
             <span class="grade-badge grade-low" id="v2-measure-grade">—</span>
             <span id="v2-measure-grade-basis" class="text-[10px] text-gray-500">based on worst section</span>
           </div>
+          <div id="v2-measure-grade-margin" class="text-[10px] mt-1 mono"></div>
           <div id="v2-measure-tol" class="text-[10px] text-gray-500 mt-2 leading-snug"></div>
           <div id="v2-measure-warn" class="text-[10px] mt-1 text-amber-400 leading-snug" style="display:none;"></div>
         </div>
@@ -4109,18 +4168,28 @@
     state._quickMeasure = m;
     const setText = (id, v) => { const el = $(id); if (el) el.textContent = v; };
     const fmt1 = v => (v == null ? '—' : v.toFixed(2));
+    // 1-decimal percent display (Codex r-precision-bug): integer rounding
+    // hid the 0.5 % boundary crossing between 44.85 % and 45.28 %.
     const ratioPct = (r) => {
       if (r == null) return '—';
-      const small = Math.round(r * 100);
-      return `${small}/${100 - small}`;
+      const small = r * 100;
+      const large = 100 - small;
+      return `${small.toFixed(1)}/${large.toFixed(1)}`;
     };
     if (!m) {
       ['v2-measure-l-tl','v2-measure-l-bl','v2-measure-r-tr','v2-measure-r-br',
        'v2-measure-t-tl','v2-measure-t-tr','v2-measure-b-bl','v2-measure-b-br',
        'v2-measure-lr-top','v2-measure-lr-bottom','v2-measure-lr-mid',
-       'v2-measure-tb-left','v2-measure-tb-right','v2-measure-tb-mid']
+       'v2-measure-tb-left','v2-measure-tb-right','v2-measure-tb-mid',
+       // SVG schematic placeholders too
+       'v2sch-c-tl-t','v2sch-c-tl-l','v2sch-c-tr-t','v2sch-c-tr-r',
+       'v2sch-c-br-b','v2sch-c-br-r','v2sch-c-bl-b','v2sch-c-bl-l',
+       'v2sch-r-lrTop','v2sch-r-lrBottom','v2sch-r-tbLeft','v2sch-r-tbRight',
+       'v2sch-r-lrMid','v2sch-r-tbMid']
         .forEach(id => setText(id, '—'));
       setText('v2-measure-grade', '—');
+      setText('v2sch-grade', '—');
+      setText('v2-measure-grade-margin', '');
       return;
     }
     // Per-corner mm
@@ -4132,44 +4201,90 @@
     setText('v2-measure-t-tr', fmt1(m.mm.top.TR));
     setText('v2-measure-b-bl', fmt1(m.mm.bottom.BL));
     setText('v2-measure-b-br', fmt1(m.mm.bottom.BR));
+    // SVG schematic: same per-corner values, placed at their visual positions.
+    setText('v2sch-c-tl-t', 'T ' + fmt1(m.mm.top.TL));
+    setText('v2sch-c-tl-l', 'L ' + fmt1(m.mm.left.TL));
+    setText('v2sch-c-tr-t', 'T ' + fmt1(m.mm.top.TR));
+    setText('v2sch-c-tr-r', 'R ' + fmt1(m.mm.right.TR));
+    setText('v2sch-c-br-b', 'B ' + fmt1(m.mm.bottom.BR));
+    setText('v2sch-c-br-r', 'R ' + fmt1(m.mm.right.BR));
+    setText('v2sch-c-bl-b', 'B ' + fmt1(m.mm.bottom.BL));
+    setText('v2sch-c-bl-l', 'L ' + fmt1(m.mm.left.BL));
     // Cross-section ratios — highlight the worst one in amber.
     const sect = m.sections;
     const sectionRows = [
-      ['v2-measure-lr-top',    sect.lrTop,    'lrTop'],
-      ['v2-measure-lr-bottom', sect.lrBottom, 'lrBottom'],
-      ['v2-measure-lr-mid',    sect.lrMid,    'lrMid'],
-      ['v2-measure-tb-left',   sect.tbLeft,   'tbLeft'],
-      ['v2-measure-tb-right',  sect.tbRight,  'tbRight'],
-      ['v2-measure-tb-mid',    sect.tbMid,    'tbMid'],
+      ['v2-measure-lr-top',    sect.lrTop,    'lrTop',    'v2sch-r-lrTop',    'v2sch-edge-top'   ],
+      ['v2-measure-lr-bottom', sect.lrBottom, 'lrBottom', 'v2sch-r-lrBottom', 'v2sch-edge-bottom'],
+      ['v2-measure-lr-mid',    sect.lrMid,    'lrMid',    'v2sch-r-lrMid',    null               ],
+      ['v2-measure-tb-left',   sect.tbLeft,   'tbLeft',   'v2sch-r-tbLeft',   'v2sch-edge-left'  ],
+      ['v2-measure-tb-right',  sect.tbRight,  'tbRight',  'v2sch-r-tbRight',  'v2sch-edge-right' ],
+      ['v2-measure-tb-mid',    sect.tbMid,    'tbMid',    'v2sch-r-tbMid',    null               ],
     ];
-    for (const [id, r, key] of sectionRows) {
-      const el = $(id);
-      if (!el) continue;
-      el.textContent = ratioPct(r);
-      el.className = (key === m.worstSection)
-        ? 'text-amber-400 font-bold'
-        : 'text-pink-400';
+    for (const [listId, r, key, svgId, edgeId] of sectionRows) {
+      const el = $(listId);
+      const isWorst = (key === m.worstSection);
+      if (el) {
+        el.textContent = ratioPct(r);
+        el.className = isWorst ? 'text-amber-400 font-bold' : 'text-pink-400';
+      }
+      const svgEl = $(svgId);
+      if (svgEl) {
+        svgEl.textContent = ratioPct(r);
+        svgEl.setAttribute('fill', isWorst ? '#fbbf24' : '#cbd5e1');
+        svgEl.setAttribute('font-weight', isWorst ? '700' : '400');
+      }
+      // Amber the corresponding card-edge line on the SVG.
+      const edgeEl = $(edgeId);
+      if (edgeEl) {
+        edgeEl.setAttribute('stroke', isWorst ? '#fbbf24' : '#475569');
+        edgeEl.setAttribute('stroke-width', isWorst ? '3' : '1.2');
+      }
     }
+    // Trace bisectors — visible only when an inner-trace bow on that axis exists.
+    const bisectH = $('v2sch-bisect-h');
+    const bisectV = $('v2sch-bisect-v');
+    const tMid = $('v2sch-r-tbMid'); // shown next to vertical bisector
+    const lMid = $('v2sch-r-lrMid'); // shown next to horizontal bisector
+    if (bisectH) bisectH.setAttribute('opacity', sect.lrMid != null ? '0.7' : '0');
+    if (bisectV) bisectV.setAttribute('opacity', sect.tbMid != null ? '0.7' : '0');
+    if (lMid)    lMid.setAttribute('opacity',     sect.lrMid != null ? '1' : '0');
+    if (tMid)    tMid.setAttribute('opacity',     sect.tbMid != null ? '1' : '0');
     // Mid rows visible only when Inner Trace is on and a bow exists on that axis.
     const lrMidRow = $('v2-measure-lr-mid-row');
     const tbMidRow = $('v2-measure-tb-mid-row');
     if (lrMidRow) lrMidRow.style.display = (sect.lrMid != null) ? '' : 'none';
     if (tbMidRow) tbMidRow.style.display = (sect.tbMid != null) ? '' : 'none';
-    // Grade badge
-    const grade = $('v2-measure-grade');
-    grade.textContent = m.grade;
-    grade.className = 'grade-badge ' + (
+    // Grade badge (list version + SVG-centred version)
+    const gradeClass = 'grade-badge ' + (
       m.grade.startsWith('Gem')   ? 'grade-10' :
       m.grade.startsWith('Mint')  ? 'grade-9'  :
       m.grade.startsWith('NM-MT') ? 'grade-8'  :
       m.grade.startsWith('NM')    ? 'grade-7'  : 'grade-low'
     );
+    const grade = $('v2-measure-grade');
+    if (grade) { grade.textContent = m.grade; grade.className = gradeClass; }
+    const schGrade = $('v2sch-grade');
+    if (schGrade) { schGrade.textContent = m.grade; schGrade.className = gradeClass; }
     const sectionLabels = {
       lrTop: 'L/R at top', lrBottom: 'L/R at bottom', lrMid: 'L/R at trace mid',
       tbLeft: 'T/B at left', tbRight: 'T/B at right', tbMid: 'T/B at trace mid',
     };
     setText('v2-measure-grade-basis',
       `worst section: ${sectionLabels[m.worstSection] || m.worstSection}`);
+    // Threshold-distance hint (Codex r-precision-bug fix d):
+    //   - For the worst section, show how far above/below the PSA-10 cut.
+    //   - Always show the relevant threshold to make boundary crossings visible.
+    const worstRatio = m.worstAxis === 'lr' ? m.lrRatio : m.tbRatio;
+    const psa10Cut = PSA_THRESHOLDS[0].ratio;   // 0.45
+    const margin = $('v2-measure-grade-margin');
+    if (margin && worstRatio != null) {
+      const ppDiff = (worstRatio - psa10Cut) * 100;   // percentage-points
+      const sign = ppDiff >= 0 ? '+' : '−';
+      const colour = ppDiff >= 0 ? 'text-emerald-400' : 'text-red-400';
+      const verb = ppDiff >= 0 ? 'over PSA-10 cut' : 'under PSA-10 cut';
+      margin.className = `text-[10px] mt-1 mono ${colour}`;
+      margin.textContent = `Worst ratio ${(worstRatio * 100).toFixed(2)}% · ${sign}${Math.abs(ppDiff).toFixed(2)} pp ${verb} (cut ${(psa10Cut * 100).toFixed(0)}%).`;
+    }
     // Tolerance hint: PSA-10 acceptable range for the OTHER side of the
     // worst section, given the locked (smaller) side.
     const sideOfWorst = (() => {
