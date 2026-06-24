@@ -3420,9 +3420,12 @@
     //    so it reads as "the active card edge after trace". The 4 corner
     //    handles still sit at the straight base positions; the green mid
     //    handles + aside trace-offset readout cover the bow feedback.
+    //    Dashed pattern matches the straight corner quad (HANDLE_QUAD_DASH)
+    //    drawn when Trace is OFF, so the user sees the same line treatment
+    //    whether or not the edge is bowed.
     const sch2 = HANDLE_SCHEMES[state.schemeIdx];
     strokeCurvedPath(traced.outerEdgePath, sch2.outer,
-                     { lineWidth: lwBand * 1.8 });
+                     { lineWidth: lwBand * 1.8, dashed: true, dash: HANDLE_QUAD_DASH });
 
     drawV2TraceMids(bands, traced);
   }
