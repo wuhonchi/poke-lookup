@@ -318,6 +318,12 @@
               title="Trace edge: drag a small green mid-handle per side to gently bow the band along the photo's apparent curve. Visual overlay only — band position follows the 4 corners.">Trace: <span id="trace-label">OFF</span></button>
       <button id="trace-reset" class="btn btn-secondary" hidden type="button"
               title="Reset all 4 trace mid handles back to straight (offset = 0).">Reset trace</button>
+      <button id="inner-refine-toggle" class="btn btn-secondary" hidden type="button"
+              title="Refine inner border: 4 pink inner-corner handles appear. Drag them onto the printed colored border. Once edited the verdict switches from 'centred' to live per-side mm + ratio + PSA-grade estimate.">Refine inner: <span id="inner-refine-label">OFF</span></button>
+      <button id="inner-trace-toggle" class="btn btn-secondary" hidden type="button"
+              title="Inner Trace: when Refine inner is ON, drag a pink mid-handle per inner side to bow the line along the printed border (lens distortion / card warp). Feeds the measurement — bowed midpoint is the sample point per side.">Inner trace: <span id="inner-trace-label">OFF</span></button>
+      <button id="inner-reset" class="btn btn-secondary" hidden type="button"
+              title="Reset inner handles back to the synthetic L/R + T/B band, clearing any manual edit and any inner trace bow.">Reset band</button>
       <button id="rotate" class="btn btn-secondary" title="Rotate front 90° clockwise">⟳ Rotate</button>
       <button id="filter-toggle" class="btn btn-secondary" title="Cycle front-image filter (display only — doesn't change measurements)">Filter: <span id="filter-label">Normal</span></button>
       <button id="color-toggle" class="btn btn-secondary" title="Cycle handle colour scheme">Colors: <span id="color-label">Cyan/Yellow</span></button>
@@ -402,6 +408,26 @@
           <div class="text-[10px] text-gray-500 mt-1 leading-snug">
             Visual only · ratio + verdict unchanged · resets to straight when offset = 0
           </div>
+        </div>
+        <!-- Live measurement strip — shown when Refine inner is ON and the user
+             has manually positioned at least one inner handle. Replaces the
+             "centred" visual verdict with real per-side mm + PSA grade. -->
+        <div id="v2-measure-info" class="mt-2 pt-2 border-t border-zinc-800" style="display:none;">
+          <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Manual inner border</div>
+          <div class="mono text-[12px]">
+            L / R: <span id="v2-measure-lr" class="text-pink-400 font-bold">— / —</span> mm
+            <span class="text-gray-500 ml-1">(<span id="v2-measure-lr-ratio">—</span>)</span>
+          </div>
+          <div class="mono text-[12px]">
+            T / B: <span id="v2-measure-tb" class="text-pink-400 font-bold">— / —</span> mm
+            <span class="text-gray-500 ml-1">(<span id="v2-measure-tb-ratio">—</span>)</span>
+          </div>
+          <div class="mt-2">
+            <span class="grade-badge grade-low" id="v2-measure-grade">—</span>
+          </div>
+          <div id="v2-measure-tol-lr" class="text-[10px] text-gray-500 mt-2 leading-snug"></div>
+          <div id="v2-measure-tol-tb" class="text-[10px] text-gray-500 leading-snug"></div>
+          <div id="v2-measure-warn" class="text-[10px] mt-1 text-amber-400 leading-snug" style="display:none;"></div>
         </div>
       </div>
       <div id="v1-stats" class="grid grid-cols-2 gap-3">
@@ -657,6 +683,27 @@
   const V2_MID_STROKE       = '#22c55e';            // green, matches ideal line family
   const V2_GHOST_ALPHA      = '44';                  // hex alpha for ghost straight band
 
+  // V2 Quick Band — manual inner border refinement (Refine inner border).
+  // Per Codex review of the "show real centering when user drags inner" request:
+  //   - Toggle ON → 4 inner corner handles snap to synthetic L/R/T/B band.
+  //   - Dragging any inner handle sets innerUserEdited = true; the stats
+  //     panel switches from "centred" text to live per-side mm + ratio + grade.
+  //   - PSA-10 tolerance is RATIO-based and ASYMMETRIC once a side is locked:
+  //     max ≤ min × (55/45) = min × 1.222. UI shows a live label per axis.
+  //   - Inner Trace is a sub-feature available only when Refine is ON.
+  //     Mutually exclusive with outer Trace (mobile-handle clutter guard).
+  const V2_INNER_REFINE_KEY = 'cardjeng_v2_inner_refine_v1';
+  const V2_INNER_TRACE_KEY  = 'cardjeng_v2_inner_trace_v1';
+  const V2_INNER_STROKE     = '#ec4899';       // pink, distinct from outer cyan + orange band
+  // PSA grade thresholds — ratio = smaller_side / total_side_pair.
+  // Front-only thresholds. Anything ≤ 50/50 + this margin passes that grade.
+  const PSA_THRESHOLDS = [
+    { grade: 'Gem Mint 10',  ratio: 45 / 100 },   // ≤ 55/45 → smaller ≥ 45%
+    { grade: 'Mint 9',       ratio: 40 / 100 },   // ≤ 60/40
+    { grade: 'NM-MT 8',      ratio: 35 / 100 },   // ≤ 65/35
+    { grade: 'NM 7',         ratio: 30 / 100 },   // ≤ 70/30
+  ];
+
   const state = {
     lockTimer: null,        // setTimeout handle for handle auto-lock after idle
     lockTimerStart: 0,      // performance.now() when current lock countdown started
@@ -711,6 +758,19 @@
     v2TraceMode: false,
     v2TraceOffsetsMm: [0, 0, 0, 0],
     v2TraceEdited: [false, false, false, false],
+    // Refine inner border (Quick Band sub-mode).
+    // quickInnerRefine = toggle; when true, 4 inner corner handles + (if
+    //   v2InnerTraceMode is also true) 4 inner mid handles are interactive.
+    // When false, behavior matches today: synthetic band only.
+    quickInnerRefine: false,
+    // v2InnerTraceMode mirrors v2TraceMode but for the INNER edge. Only
+    //   meaningful when quickInnerRefine is true. Set true at most once at a
+    //   time with v2TraceMode (mutually exclusive in the UI).
+    v2InnerTraceMode: false,
+    v2InnerTraceOffsetsMm: [0, 0, 0, 0],
+    v2InnerTraceEdited: [false, false, false, false],
+    // Cache of last measurement so stats render without re-computing.
+    _quickMeasure: null,
     view: {
       zoom: 1,
       offsetX: 0, offsetY: 0,
@@ -943,12 +1003,33 @@
       const traceActive = state.v2TraceMode &&
         state.v2TraceOffsetsMm.some(o => Math.abs(o) > 0.001);
       if (!traceActive) {
-        // Corner-to-corner outer quad is a guide line; dashed reads as
-        // "user-defined reference" vs the solid orange offset bands.
         drawQuad(state.outer, sch.outer, { dashed: true, dash: HANDLE_QUAD_DASH });
       }
-      drawV2Bands(state.outer, state.idealMmLR, state.idealMmTB);
+      const measured = state.quickInnerRefine && state.innerUserEdited;
+      drawV2Bands(state.outer, state.idealMmLR, state.idealMmTB, {
+        // Once the user is measuring with manual inner, fade the synthetic
+        // orange band so the pink user line is the primary reference.
+        fadeBands: measured,
+      });
       drawHandles(state.outer, sch.outer, 'outer');
+      // ── Refine inner border layer ──────────────────────────────
+      // Pink inner quad + corner handles (and optional inner trace mids)
+      // appear when the toggle is on. When the inner is the synthetic
+      // default, it tracks the green ideal line; once the user drags a
+      // handle, state.inner is the live source of truth.
+      if (state.quickInnerRefine && state.inner) {
+        const innerTraceActive = state.v2InnerTraceMode &&
+          state.v2InnerTraceOffsetsMm.some(o => Math.abs(o) > 0.001);
+        if (innerTraceActive) {
+          drawV2InnerTrace(state.outer, state.inner,
+                           state.v2InnerTraceOffsetsMm);
+        } else {
+          drawQuad(state.inner, V2_INNER_STROKE,
+                   { dashed: true, dash: HANDLE_QUAD_DASH, lineWidth: 1.2 });
+        }
+        drawHandles(state.inner, V2_INNER_STROKE, 'inner');
+        if (state.v2InnerTraceMode) drawV2InnerTraceMids(state.outer, state.inner);
+      }
       drawCountdown();
       drawMinimap();
       return;
@@ -1167,10 +1248,12 @@
         if (d2 <= bestD2) { bestD2 = d2; best = { set: setName, idx: i }; }
       }
     };
-    // Quick Band mode hides inner handles + Refine mids, so we only test
-    // the outer 4. This prevents stale inner handles from receiving taps
-    // when they're not visible.
-    if (state.mode !== 'quick' && state.inner) tryHits('inner', state.inner, 4);
+    // Quick Band mode hides inner handles + Refine mids by default, but the
+    // user can opt in via "Refine inner border" (state.quickInnerRefine).
+    const quickInnerOn = state.mode === 'quick' && state.quickInnerRefine;
+    if ((state.mode !== 'quick' || quickInnerOn) && state.inner) {
+      tryHits('inner', state.inner, 4);
+    }
     if (state.outer) tryHits('outer', state.outer, 4);
     if (state.mode !== 'quick' && state.refineMode) {
       if (state.innerMid && state.innerMid.length === 8) tryHits('innerMid', state.innerMid, 8);
@@ -1179,6 +1262,10 @@
     // V2 Trace edge mids — only hit-test when V2 + Trace ON + cache exists.
     if (state.mode === 'quick' && state.v2TraceMode && state._v2TraceMidsCache) {
       tryHits('v2TraceMid', state._v2TraceMidsCache, 4);
+    }
+    // Inner trace mids only when Refine on + Inner Trace toggle on.
+    if (quickInnerOn && state.v2InnerTraceMode && state._v2InnerTraceMidsCache) {
+      tryHits('v2InnerTraceMid', state._v2InnerTraceMidsCache, 4);
     }
     return best;
   }
@@ -1334,6 +1421,22 @@
         scheduleDraw();
         return;
       }
+      // Inner Trace edge mid: constrain to the side normal (canonical), so
+      // the bow stays meaningful as "how much the printed border bows on
+      // this side" — same math as outer Trace but with inner-corner base.
+      if (state.drag.set === 'v2InnerTraceMid') {
+        const s = state.drag.idx;
+        let off = v2InnerImagePointToTraceOffsetMm(state.outer, state.inner, s, ip);
+        const cap = V2_TRACE_HIGH_MM + 1;
+        if (off > cap)  off = cap;
+        if (off < -cap) off = -cap;
+        state.v2InnerTraceOffsetsMm[s] = off;
+        state.v2InnerTraceEdited[s] = true;
+        state.innerUserEdited = true;  // ensures the live measurement strip stays on
+        startLockTimer();
+        scheduleDraw();
+        return;
+      }
 
       const prev = state[state.drag.set][state.drag.idx];
       // Only restart the lock timer when there's meaningful movement
@@ -1349,6 +1452,11 @@
         state.outerUserEdited = true;
       } else if (state.drag.set === 'inner' || state.drag.set === 'innerMid') {
         state.innerUserEdited = true;
+        // Live update the measurement strip + tolerance hints during drag.
+        if (state.mode === 'quick' && state.quickInnerRefine &&
+            typeof refreshInnerRefineUI === 'function') {
+          refreshInnerRefineUI();
+        }
       }
       // Codex v1.1: when dragging a corner in refine mode, proportionally
       // shift the 2 mids on each adjacent side so they keep their t-value
@@ -1919,7 +2027,10 @@
     // Also reset trace offsets — they're per-image, not persisted across uploads.
     state.v2TraceOffsetsMm = [0, 0, 0, 0];
     state.v2TraceEdited    = [false, false, false, false];
+    state.v2InnerTraceOffsetsMm = [0, 0, 0, 0];
+    state.v2InnerTraceEdited    = [false, false, false, false];
     if (typeof refreshV2TraceUI === 'function') refreshV2TraceUI();
+    if (typeof refreshInnerRefineUI === 'function') refreshInnerRefineUI();
 
     // Try classical-CV auto-seed for the outer cyan corners.
     let detected = null;
@@ -3279,9 +3390,109 @@
     return { outerPath, idealPath, innerPath, outerEdgePath, traceMidsImage };
   }
 
-  // Inverse of the above: given a user pointer in IMAGE coords, compute the
-  // canonical-mm trace offset for side `s`. This is the projection of the
-  // canonical pointer onto the inward normal at that side. Used during drag.
+  // ── Refine inner border — measurement core ─────────────────────────
+  // Project a user-edited (or synthetic) inner quad into canonical card space
+  // via the outer-card homography, then compute per-side mm distances from
+  // the canonical card edge.
+  //
+  // Args:
+  //   outer  — 4 image-space points (TL, TR, BR, BL).
+  //   inner  — 4 image-space points (TL, TR, BR, BL).
+  //   innerTraceOffsetsMm — optional [4] bow offsets per side (T, R, B, L).
+  //     When supplied, the side's "sample point" becomes the bowed midpoint
+  //     of the inner side, not the straight midpoint of the corner pair.
+  //
+  // Returns { lr, lrRatio, tb, tbRatio, grade, errors[] } or null if degenerate.
+  function measureCentering(outer, inner, innerTraceOffsetsMm) {
+    if (!outer || !inner) return null;
+    if (!validateOuterQuad(outer)) return null;
+    const frame = pickFrame(outer);
+    const dst = [
+      { x: 0,        y: 0 },
+      { x: frame.TW, y: 0 },
+      { x: frame.TW, y: frame.TH },
+      { x: 0,        y: frame.TH },
+    ];
+    const H = computeHomography(outer, dst);
+    if (!H) return null;
+    const sX = frame.TW / frame.wMm;
+    const sY = frame.TH / frame.hMm;
+    // Project inner corners into canonical.
+    const innerCanon = inner.map(p => applyH(H, p));
+    // Apply rotation permutation so [0,1,2,3] = visual [TL, TR, BR, BL].
+    const k = (((state.view.rot || 0) % 360) / 90) | 0;
+    const shift = (4 - k) % 4;
+    const viewInner = [0,1,2,3].map(i => innerCanon[(i + shift) % 4]);
+    // Per side (visual): take midpoint of two corners that define that side.
+    //   Side 0 (Top) : avg of TL + TR  →  canonical y is the T mm
+    //   Side 1 (Right): avg of TR + BR  →  canonical (TW - x) is the R mm
+    //   Side 2 (Bottom): avg of BR + BL →  canonical (TH - y) is the B mm
+    //   Side 3 (Left): avg of BL + TL  →  canonical x is the L mm
+    const sideMid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    let mids = [
+      sideMid(viewInner[0], viewInner[1]),
+      sideMid(viewInner[1], viewInner[2]),
+      sideMid(viewInner[2], viewInner[3]),
+      sideMid(viewInner[3], viewInner[0]),
+    ];
+    // Inner Trace: if a side has a non-zero offset, bow the sample point
+    // inward by that amount (canonical-space normal × offset × scale).
+    if (innerTraceOffsetsMm) {
+      const permOffs = [0,1,2,3].map(i => innerTraceOffsetsMm[(i + shift) % 4]);
+      for (let s = 0; s < 4; s++) {
+        if (Math.abs(permOffs[s]) < 0.001) continue;
+        const n = _v2SideNormalCanonical(s);
+        const sFactor = (s === 0 || s === 2) ? sY : sX;
+        const off = permOffs[s] * sFactor;
+        mids[s] = { x: mids[s].x + n.x * off, y: mids[s].y + n.y * off };
+      }
+    }
+    // Canonical mm per side.
+    const tMm = mids[0].y / sY;
+    const rMm = (frame.TW - mids[1].x) / sX;
+    const bMm = (frame.TH - mids[2].y) / sY;
+    const lMm = mids[3].x / sX;
+    const errors = [];
+    if (tMm < 0 || rMm < 0 || bMm < 0 || lMm < 0) errors.push('crossed');
+    if (tMm + bMm <= 0 || lMm + rMm <= 0)         errors.push('zero-sum');
+    // Per-axis ratio = smaller / (L + R) (or T+B); higher = more centred.
+    const ratio = (a, b) => {
+      const sum = a + b;
+      if (sum <= 0) return 0;
+      return Math.min(a, b) / sum;
+    };
+    const lrRatio = ratio(lMm, rMm);
+    const tbRatio = ratio(tMm, bMm);
+    const worst = Math.min(lrRatio, tbRatio);
+    // Find best grade where smaller ≥ threshold ratio (≥ 0.45 = PSA10, etc).
+    let grade = 'Below grade';
+    for (const t of PSA_THRESHOLDS) {
+      if (worst >= t.ratio) { grade = t.grade; break; }
+    }
+    return {
+      lr: [lMm, rMm],     // [L, R]
+      tb: [tMm, bMm],     // [T, B]
+      lrRatio, tbRatio,
+      grade,
+      errors,
+      frame,
+    };
+  }
+
+  // PSA-10-acceptable range for the SECOND side given the FIRST is fixed.
+  // Returns [lo, hi] mm. Math: smaller / (smaller + larger) ≥ 0.45
+  //   → max ≤ min × (55/45) ≈ 1.222 × min, AND min ≥ 0.818 × max.
+  // If `fixedMm` is treated as one side, the other side must lie in
+  // [fixedMm / 1.222, fixedMm × 1.222] for PSA 10. We use the 0.45 ratio
+  // threshold from PSA_THRESHOLDS[0].
+  function psa10OtherSideRange(fixedMm) {
+    const r = PSA_THRESHOLDS[0].ratio;        // 0.45
+    const k = (1 - r) / r;                    // 55/45 ≈ 1.222
+    return [fixedMm / k, fixedMm * k];
+  }
+
+  // Inverse of buildV2TracedBands above: given a user pointer in IMAGE coords,
+  // compute the canonical-mm trace offset for side `s`. Used during drag.
   function v2ImagePointToTraceOffsetMm(bands, s, imgPt) {
     if (!bands) return 0;
     const { H, sX, sY, canonicalOuterEdge } = bands;
@@ -3305,7 +3516,11 @@
     octx.fill(evenOdd ? 'evenodd' : 'nonzero');
   }
 
-  function drawV2Bands(outer, idealMmLR, idealMmTB) {
+  function drawV2Bands(outer, idealMmLR, idealMmTB, opts) {
+    // opts.fadeBands = when true, lower the alpha on the synthetic orange
+    //   bands + green ideal so a user-edited inner line reads as primary.
+    const _fadePrev = octx.globalAlpha;
+    if (opts && opts.fadeBands) octx.globalAlpha = 0.35;
     const bands = computeV2Bands(outer, idealMmLR, idealMmTB);
     // Quick Band aside summary — show both axes side by side.
     const detEl = $('v2-current-ideal');
@@ -3324,7 +3539,7 @@
         ? `${loLR}–${hiLR}`
         : `L/R ${loLR}–${hiLR} · T/B ${loTB}–${hiTB}`;
     }
-    if (!bands) return;
+    if (!bands) { octx.globalAlpha = _fadePrev; return; }
     const trustworthy = state.outerAutoDetected || state.outerUserEdited;
     const alpha = trustworthy ? '' : '66';
     const lwBand  = V2_BAND_WIDTH;
@@ -3358,6 +3573,7 @@
       // Mid handles still visible (at t=0.5 default position) so user can
       // grab them and bow.
       if (state.v2TraceMode) drawV2TraceMids(bands);
+      octx.globalAlpha = _fadePrev;
       return;
     }
 
@@ -3370,6 +3586,7 @@
                { dashed: true, dash: V2_DASH_PATTERN, lineWidth: lwIdeal });
       drawQuad(bands.innerBand, V2_BAND_STROKE + alpha, { lineWidth: lwBand });
       if (state.v2TraceMode) drawV2TraceMids(bands);
+      octx.globalAlpha = _fadePrev;
       return;
     }
 
@@ -3428,6 +3645,123 @@
                      { lineWidth: lwBand * 1.8, dashed: true, dash: HANDLE_QUAD_DASH });
 
     drawV2TraceMids(bands, traced);
+    octx.globalAlpha = _fadePrev;
+  }
+
+  // Inner trace — draws the user-edited inner border with a Bezier bow per
+  // side, mirroring the outer Trace edge feature on the pink inner line.
+  function drawV2InnerTrace(outer, inner, innerOffsetsMm) {
+    if (!outer || !inner) return;
+    if (innerOffsetsMm.every(o => Math.abs(o) < 0.001)) {
+      // Nothing bowed — equivalent to a straight inner quad.
+      drawQuad(inner, V2_INNER_STROKE,
+               { dashed: true, dash: HANDLE_QUAD_DASH, lineWidth: 1.4 });
+      return;
+    }
+    const bands = computeV2Bands(outer, state.idealMmLR, state.idealMmTB);
+    if (!bands) {
+      drawQuad(inner, V2_INNER_STROKE,
+               { dashed: true, dash: HANDLE_QUAD_DASH, lineWidth: 1.4 });
+      return;
+    }
+    const { H, Hinv, sX, sY } = bands;
+    // Inner corners projected into canonical space define the inner rect
+    // we bow around. We use the user's actual inner positions (not the
+    // synthetic L/R/T/B inset).
+    const innerCanonRaw = inner.map(p => applyH(H, p));
+    const k = (((state.view.rot || 0) % 360) / 90) | 0;
+    const shift = (4 - k) % 4;
+    const innerCanon = [0,1,2,3].map(i => innerCanonRaw[(i + shift) % 4]);
+    const permOffs = [0,1,2,3].map(i => innerOffsetsMm[(i + shift) % 4]);
+    // Build a Bezier-bowed path per side.
+    const path = [];
+    for (let s = 0; s < 4; s++) {
+      const a = innerCanon[s];
+      const b = innerCanon[(s + 1) % 4];
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const n = _v2SideNormalCanonical(s);
+      const sFactor = (s === 0 || s === 2) ? sY : sX;
+      const off = permOffs[s] * sFactor;
+      const curvedMid = { x: mid.x + n.x * off, y: mid.y + n.y * off };
+      // Unshift back to raw inner index before warping (so a/b stay aligned).
+      const aRaw = innerCanonRaw[(s + shift) % 4];
+      const bRaw = innerCanonRaw[((s + 1) + shift) % 4];
+      // Use canonical-bowed midpoint directly; warp endpoints + midpoint.
+      const samples = _v2BezierToImage(aRaw, curvedMid, bRaw, Hinv);
+      const upTo = (s === 3) ? samples.length : samples.length - 1;
+      for (let i = 0; i < upTo; i++) path.push(samples[i]);
+    }
+    octx.beginPath();
+    path.forEach((p, i) => {
+      const cp = imageToCanvas(p);
+      if (i === 0) octx.moveTo(cp.x, cp.y); else octx.lineTo(cp.x, cp.y);
+    });
+    octx.closePath();
+    octx.strokeStyle = V2_INNER_STROKE;
+    octx.lineWidth = 1.6;
+    octx.setLineDash(HANDLE_QUAD_DASH);
+    octx.stroke();
+    octx.setLineDash([]);
+  }
+
+  // Inner trace mid handles — 4 small pink circles, one per inner side,
+  // at the bowed canonical-midpoint of each side projected back to image
+  // coords. Cached for hit-testing during drag.
+  function drawV2InnerTraceMids(outer, inner) {
+    if (!outer || !inner) return;
+    const bands = computeV2Bands(outer, state.idealMmLR, state.idealMmTB);
+    if (!bands) return;
+    const { H, Hinv, sX, sY } = bands;
+    const innerCanonRaw = inner.map(p => applyH(H, p));
+    const k = (((state.view.rot || 0) % 360) / 90) | 0;
+    const shift = (4 - k) % 4;
+    const innerCanon = [0,1,2,3].map(i => innerCanonRaw[(i + shift) % 4]);
+    const permOffs = [0,1,2,3].map(i => state.v2InnerTraceOffsetsMm[(i + shift) % 4]);
+    const midsImage = [];
+    for (let s = 0; s < 4; s++) {
+      const a = innerCanon[s];
+      const b = innerCanon[(s + 1) % 4];
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const n = _v2SideNormalCanonical(s);
+      const sFactor = (s === 0 || s === 2) ? sY : sX;
+      const off = permOffs[s] * sFactor;
+      const curvedMid = { x: mid.x + n.x * off, y: mid.y + n.y * off };
+      midsImage.push(applyH(Hinv, curvedMid));
+    }
+    // Unpermute to side 0..3 in raw inner order so cache matches drag indices.
+    const inv = [0,1,2,3].map(i => midsImage[(i - shift + 4) % 4]);
+    for (let i = 0; i < inv.length; i++) {
+      const cp = imageToCanvas(inv[i]);
+      octx.beginPath();
+      octx.arc(cp.x, cp.y, 6, 0, Math.PI * 2);
+      octx.fillStyle = V2_INNER_STROKE + 'CC';
+      octx.fill();
+      octx.lineWidth = 1.2;
+      octx.strokeStyle = '#000';
+      octx.stroke();
+    }
+    state._v2InnerTraceMidsCache = inv;
+  }
+
+  // Project user pointer (image coords) to canonical-mm bow offset for inner
+  // side s. Symmetric with v2ImagePointToTraceOffsetMm but uses the inner
+  // base rect (per-user inner corners) instead of the canonical outer edge.
+  function v2InnerImagePointToTraceOffsetMm(outer, inner, s, imgPt) {
+    if (!outer || !inner) return 0;
+    const bands = computeV2Bands(outer, state.idealMmLR, state.idealMmTB);
+    if (!bands) return 0;
+    const { H, sX, sY } = bands;
+    const innerCanon = inner.map(p => applyH(H, p));
+    const k = (((state.view.rot || 0) % 360) / 90) | 0;
+    const shift = (4 - k) % 4;
+    const a = innerCanon[(s + shift) % 4];
+    const b = innerCanon[((s + 1) + shift) % 4];
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const canon = applyH(H, imgPt);
+    const n = _v2SideNormalCanonical(s);
+    const dot = (canon.x - mid.x) * n.x + (canon.y - mid.y) * n.y;
+    const sFactor = (s === 0 || s === 2) ? sY : sX;
+    return dot / sFactor;
   }
 
   function drawV2TraceMids(bands, traced) {
@@ -3504,6 +3838,7 @@
     if (refineBtn) refineBtn.hidden = state.mode === 'quick';
     setV2StatsVisible(state.mode === 'quick');
     refreshV2TraceUI();
+    if (typeof refreshInnerRefineUI === 'function') refreshInnerRefineUI();
     // When entering Precise from Quick: if user has not edited inner handles,
     // auto-place them at the current ideal-mm inset so the precise inner
     // starting point matches what Quick Band showed.
@@ -3635,6 +3970,154 @@
   $('trace-toggle').addEventListener('click', toggleV2Trace);
   $('trace-reset').addEventListener('click', resetV2Trace);
 
+  // ── Refine inner border + Inner Trace + Reset band ────────────
+  // Seed state.inner from the current synthetic L/R/T/B band so the inner
+  // corner handles start exactly on the dashed green ideal line.
+  function seedInnerFromSyntheticBand() {
+    if (!state.outer || !state.imgW) return;
+    const bands = computeV2Bands(state.outer, state.idealMmLR, state.idealMmTB);
+    if (bands && bands.idealLine && bands.idealLine.every(Boolean)) {
+      state.inner = bands.idealLine.map(p => ({ x: p.x, y: p.y }));
+    }
+  }
+
+  function refreshInnerRefineUI() {
+    const refineOn = !!state.quickInnerRefine;
+    const traceInnerOn = refineOn && state.v2InnerTraceMode;
+    // Toolbar buttons — only show when Quick Band is active (always, today).
+    const inQuick = state.mode === 'quick';
+    const setBtn = (id, show, primary) => {
+      const el = $(id);
+      if (!el) return;
+      el.hidden = !show;
+      el.classList.toggle('btn-primary', !!primary);
+    };
+    setBtn('inner-refine-toggle', inQuick, refineOn);
+    setBtn('inner-trace-toggle',  inQuick && refineOn, traceInnerOn);
+    setBtn('inner-reset',         inQuick && refineOn && (state.innerUserEdited ||
+      state.v2InnerTraceOffsetsMm.some(o => Math.abs(o) > 0.001)));
+    // Labels
+    const rlbl = $('inner-refine-label'); if (rlbl) rlbl.textContent = refineOn ? 'ON' : 'OFF';
+    const tlbl = $('inner-trace-label');  if (tlbl) tlbl.textContent = traceInnerOn ? 'ON' : 'OFF';
+    // Hide outer Trace while inner is active — Codex anti-clutter guard.
+    const outerTraceBtn = $('trace-toggle');
+    const outerTraceReset = $('trace-reset');
+    if (outerTraceBtn)   outerTraceBtn.hidden   = !inQuick || refineOn;
+    if (outerTraceReset) outerTraceReset.hidden = !inQuick || refineOn;
+    // Live measurement strip
+    refreshQuickMeasure();
+  }
+
+  function refreshQuickMeasure() {
+    const info = $('v2-measure-info');
+    if (!info) return;
+    const live = state.quickInnerRefine && state.innerUserEdited && state.outer && state.inner;
+    info.style.display = live ? '' : 'none';
+    if (!live) { state._quickMeasure = null; return; }
+    const m = measureCentering(
+      state.outer,
+      state.inner,
+      state.v2InnerTraceMode ? state.v2InnerTraceOffsetsMm : null,
+    );
+    state._quickMeasure = m;
+    if (!m) {
+      $('v2-measure-lr').textContent = '— / —';
+      $('v2-measure-tb').textContent = '— / —';
+      $('v2-measure-lr-ratio').textContent = '—';
+      $('v2-measure-tb-ratio').textContent = '—';
+      $('v2-measure-grade').textContent = '—';
+      return;
+    }
+    const fmt = (a, b) => `${a.toFixed(2)} / ${b.toFixed(2)}`;
+    const ratioPct = (r) => {
+      const small = Math.round(r * 100);
+      const large = 100 - small;
+      return `${small}/${large}`;
+    };
+    $('v2-measure-lr').textContent = fmt(m.lr[0], m.lr[1]);
+    $('v2-measure-tb').textContent = fmt(m.tb[0], m.tb[1]);
+    $('v2-measure-lr-ratio').textContent = ratioPct(m.lrRatio);
+    $('v2-measure-tb-ratio').textContent = ratioPct(m.tbRatio);
+    const grade = $('v2-measure-grade');
+    grade.textContent = m.grade;
+    // Colour the grade badge by PSA tier.
+    grade.className = 'grade-badge ' + (
+      m.grade.startsWith('Gem')   ? 'grade-10' :
+      m.grade.startsWith('Mint')  ? 'grade-9'  :
+      m.grade.startsWith('NM-MT') ? 'grade-8'  :
+      m.grade.startsWith('NM')    ? 'grade-7'  : 'grade-low'
+    );
+    // Per-axis tolerance hint: given the larger side, the smaller side must
+    // fit in [smaller_min, larger_max] for PSA10. We show the range for the
+    // OTHER side relative to the smaller (locked) one.
+    const psa10Hint = (a, b, axis) => {
+      if (a <= 0 || b <= 0) return '';
+      const small = Math.min(a, b);
+      const big   = Math.max(a, b);
+      const [lo, hi] = psa10OtherSideRange(small);
+      // If big is already inside [lo, hi], we're fine.
+      const ok = big >= lo && big <= hi;
+      const otherAxis = (axis === 'L/R') ? 'R/L' : 'T/B';
+      if (ok) return `${axis} ratio ${ratioPct(small / (a + b))} — meets PSA 10.`;
+      return `${axis}: smaller side ${small.toFixed(2)} mm → the other side must be ${lo.toFixed(2)}–${hi.toFixed(2)} mm for PSA 10 (currently ${big.toFixed(2)}).`;
+    };
+    $('v2-measure-tol-lr').textContent = psa10Hint(m.lr[0], m.lr[1], 'L/R');
+    $('v2-measure-tol-tb').textContent = psa10Hint(m.tb[0], m.tb[1], 'T/B');
+    const warn = $('v2-measure-warn');
+    if (warn) {
+      if (m.errors.includes('crossed')) {
+        warn.style.display = '';
+        warn.textContent = '⚠ Inner border crosses outer card edge. Re-place handles.';
+      } else if (m.errors.includes('zero-sum')) {
+        warn.style.display = '';
+        warn.textContent = '⚠ Degenerate inner placement (one side ≤ 0 mm).';
+      } else {
+        warn.style.display = 'none';
+      }
+    }
+  }
+
+  function toggleInnerRefine() {
+    state.quickInnerRefine = !state.quickInnerRefine;
+    try {
+      localStorage.setItem(V2_INNER_REFINE_KEY, state.quickInnerRefine ? 'on' : 'off');
+    } catch (_) {}
+    if (state.quickInnerRefine && !state.innerUserEdited) {
+      // Seed inner from the synthetic L/R/T/B band so handles start aligned
+      // with the green ideal line.
+      seedInnerFromSyntheticBand();
+    }
+    if (!state.quickInnerRefine) {
+      // Turning OFF also disables inner trace so we don't paint stale mids.
+      state.v2InnerTraceMode = false;
+    }
+    refreshInnerRefineUI();
+    scheduleDraw();
+  }
+
+  function toggleInnerTrace() {
+    if (!state.quickInnerRefine) return;
+    state.v2InnerTraceMode = !state.v2InnerTraceMode;
+    try {
+      localStorage.setItem(V2_INNER_TRACE_KEY, state.v2InnerTraceMode ? 'on' : 'off');
+    } catch (_) {}
+    refreshInnerRefineUI();
+    scheduleDraw();
+  }
+
+  function resetInnerBand() {
+    state.innerUserEdited = false;
+    state.v2InnerTraceOffsetsMm = [0, 0, 0, 0];
+    state.v2InnerTraceEdited    = [false, false, false, false];
+    seedInnerFromSyntheticBand();
+    refreshInnerRefineUI();
+    scheduleDraw();
+  }
+
+  $('inner-refine-toggle').addEventListener('click', toggleInnerRefine);
+  $('inner-trace-toggle').addEventListener('click', toggleInnerTrace);
+  $('inner-reset').addEventListener('click', resetInnerBand);
+
   // Restore persisted mode + per-axis ideal-mm with v19 single-value migration.
   try {
     const savedMode = localStorage.getItem(V2_MODE_KEY);
@@ -3650,11 +4133,19 @@
     $('ideal-tb-display').textContent = state.idealMmTB.toFixed(2) + ' mm';
     const savedTrace = localStorage.getItem(V2_TRACE_KEY);
     if (savedTrace === 'on') state.v2TraceMode = true;
+    const savedInnerRefine = localStorage.getItem(V2_INNER_REFINE_KEY);
+    if (savedInnerRefine === 'on') state.quickInnerRefine = true;
+    const savedInnerTrace = localStorage.getItem(V2_INNER_TRACE_KEY);
+    if (savedInnerTrace === 'on') state.v2InnerTraceMode = true;
     // Precise mode is hidden in the UI for now — force Quick Band regardless of
     // legacy localStorage value. To re-enable Precise, unhide the .mode-seg div
     // and drop this override.
     applyMode('quick');
-  } catch (_) { applyMode('quick'); }
+    refreshInnerRefineUI();
+  } catch (_) {
+    applyMode('quick');
+    if (typeof refreshInnerRefineUI === 'function') refreshInnerRefineUI();
+  }
 })();
 </script>
 
